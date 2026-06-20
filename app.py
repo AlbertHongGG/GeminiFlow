@@ -1,16 +1,18 @@
 import asyncio
 
-from gemini_flow import Gemini
-
+from gemini_flow.services.gemini_client import GeminiClient
+from gemini_flow.models import ChatRequest
 
 async def main() -> None:
-    ai = Gemini(model="gemini-3-pro-2")
+    client = GeminiClient()
+    req = ChatRequest(
+        prompt="講一個故事",
+        model="gemini-3-pro",
+    )
 
-    # stream = await ai.astream_chat("描述照片中的內容。", images=["./input/大為.png"])
-    stream = await ai.astream_chat("講一個故事")
-    async for chunk in stream:
-        print(chunk, end="", flush=True)
-
+    async for chunk in client.stream_chat(req):
+        if chunk.text:
+            print(chunk.text, end="", flush=True)
 
 if __name__ == "__main__":
     asyncio.run(main())

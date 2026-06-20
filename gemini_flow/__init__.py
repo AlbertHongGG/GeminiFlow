@@ -1,7 +1,8 @@
-__all__ = [
-    "Gemini",
-    "GeminiWebClient",
-]
+from .services.gemini_client import GeminiClient
+from .models import ChatRequest, ImagePayload
 
-from .entrypoint import Gemini
-from .gemini.client import GeminiWebClient
+__all__ = [
+    "GeminiClient",
+    "ChatRequest",
+    "ImagePayload"
+]
