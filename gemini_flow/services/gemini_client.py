@@ -116,10 +116,37 @@ class GeminiClient:
         def _is_output(url):
             return url.startswith("data:image/") or "lh3.googleusercontent.com/gg-dl/" in url
             
+        buffer = ""
         async for chunk in client.post_stream(GEMINI_REQUEST_URL, params=params, data=data, headers=headers):
-            raw_line = chunk.rstrip("\r\n")
-            if not raw_line: continue
-            
+            buffer += chunk
+            while "\n" in buffer:
+                raw_line, buffer = buffer.split("\n", 1)
+                raw_line = raw_line.rstrip("\r")
+                if not raw_line: continue
+                
+                if is_image_model:
+                    for candidate in parser.extract_image_candidates(raw_line):
+                        norm = _normalize(candidate)
+                        if not norm: continue
+                        if _is_placeholder(norm):
+                            if fallback_image_candidate is None: fallback_image_candidate = norm
+                            continue
+                        if _is_output(norm):
+                            final_image_candidate = norm
+
+                delta, ids = parser.extract_text_delta(raw_line)
+                
+                if ids and not emitted_session_ids:
+                    emitted_session_ids = True
+                    yield ChatResponseChunk(session_ids=ids)
+                    if request.session_id:
+                        session_manager.save(SessionData(session_id=request.session_id, conversation_ids=ids))
+
+                if delta:
+                    yield ChatResponseChunk(text=delta)
+
+        if buffer.strip():
+            raw_line = buffer.rstrip("\r\n")
             if is_image_model:
                 for candidate in parser.extract_image_candidates(raw_line):
                     norm = _normalize(candidate)
@@ -129,9 +156,8 @@ class GeminiClient:
                         continue
                     if _is_output(norm):
                         final_image_candidate = norm
-
-            delta, ids = parser.extract_text_delta(raw_line)
             
+            delta, ids = parser.extract_text_delta(raw_line)
             if ids and not emitted_session_ids:
                 emitted_session_ids = True
                 yield ChatResponseChunk(session_ids=ids)
