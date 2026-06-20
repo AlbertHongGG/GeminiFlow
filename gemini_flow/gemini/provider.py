@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import sys
@@ -61,6 +62,7 @@ class GeminiWebProvider(ChatProvider):
         proxy: Optional[str] = None,
         debug: bool = False,
         save_images: bool = True,
+        conversation_ids: Optional[Sequence[str]] = None,
     ) -> AsyncTextStream:
         if REQUIRED_COOKIE_NAME not in cookies:
             raise MissingAuthError(f"Missing required cookie: {REQUIRED_COOKIE_NAME}")
@@ -82,6 +84,7 @@ class GeminiWebProvider(ChatProvider):
             tokens=tokens,
             model=model,
             uploads=uploads,
+            conversation_ids=conversation_ids,
         )
 
         normalized_model = model.strip().lower()
@@ -199,6 +202,7 @@ class GeminiWebProvider(ChatProvider):
             out_dir = _get_image_output_dir() if is_image_model else Path.cwd()
             out_prefix = f"gemini_{model}_{int(time.time())}"
             out_index = 0
+            emitted_session_ids = False
 
             async with aiohttp.ClientSession(headers=DEFAULT_HEADERS, cookies=cookies) as client:
                 try:
@@ -242,9 +246,13 @@ class GeminiWebProvider(ChatProvider):
                                             # Keep only the latest output candidate; save once at the end.
                                             final_image_candidate = normalized
 
-                                delta, last_content = extract_text_delta_from_raw_line(
+                                delta, last_content, ids = extract_text_delta_from_raw_line(
                                     raw_line, last_content
                                 )
+                                if ids and not emitted_session_ids:
+                                    emitted_session_ids = True
+                                    yield f"[session_ids] {json.dumps(ids)}\n"
+
                                 if delta:
                                     if not is_image_model or not _is_noise_text_in_image_mode(delta):
                                         emitted_any = True
@@ -268,7 +276,11 @@ class GeminiWebProvider(ChatProvider):
                         if _is_output_image_url(normalized):
                             final_image_candidate = normalized
 
-                delta, last_content = extract_text_delta_from_raw_line(raw_line, last_content)
+                delta, last_content, ids = extract_text_delta_from_raw_line(raw_line, last_content)
+                if ids and not emitted_session_ids:
+                    emitted_session_ids = True
+                    yield f"[session_ids] {json.dumps(ids)}\n"
+
                 if delta:
                     if not is_image_model or not _is_noise_text_in_image_mode(delta):
                         emitted_any = True

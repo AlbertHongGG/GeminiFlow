@@ -31,6 +31,7 @@ class GeminiWebClient:
         debug: bool = False,
         auto_refresh_cookies: bool = True,
         save_images: bool = True,
+        conversation_ids: Optional[Sequence[str]] = None,
     ) -> AsyncTextStream:
         async def _refresh_cookies() -> None:
             await ensure_playwright_cookies(
@@ -72,6 +73,7 @@ class GeminiWebClient:
                 proxy=proxy,
                 debug=debug,
                 save_images=save_images,
+                conversation_ids=conversation_ids,
             )
         except Exception:
             if not auto_refresh_cookies:
@@ -89,4 +91,5 @@ class GeminiWebClient:
                 proxy=proxy,
                 debug=debug,
                 save_images=save_images,
+                conversation_ids=conversation_ids,
             )

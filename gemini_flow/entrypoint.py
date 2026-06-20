@@ -41,6 +41,7 @@ class Gemini:
         proxy: Optional[str] = None,
         debug: Optional[bool] = None,
         save_images: Optional[bool] = None,
+        conversation_ids: Optional[Sequence[str]] = None,
     ):
         image_inputs: Optional[list[ImageInput]] = None
         if images:
@@ -60,6 +61,7 @@ class Gemini:
             debug=debug if debug is not None else self.debug,
             auto_refresh_cookies=self.auto_refresh_cookies,
             save_images=True if save_images is None else save_images,
+            conversation_ids=conversation_ids,
         )
 
     async def achat(
@@ -72,6 +74,7 @@ class Gemini:
         proxy: Optional[str] = None,
         debug: Optional[bool] = None,
         save_images: Optional[bool] = None,
+        conversation_ids: Optional[Sequence[str]] = None,
     ) -> str:
         stream = await self.astream_chat(
             prompt,
@@ -81,9 +84,12 @@ class Gemini:
             proxy=proxy,
             debug=debug,
             save_images=save_images,
+            conversation_ids=conversation_ids,
         )
         parts: list[str] = []
         async for chunk in stream:
+            if isinstance(chunk, str) and chunk.startswith("[session_ids] "):
+                continue
             parts.append(chunk)
         return "".join(parts)
 
@@ -98,6 +104,7 @@ class Gemini:
         debug: Optional[bool] = None,
         on_chunk: Optional[Callable[[str], None]] = None,
         save_images: Optional[bool] = None,
+        conversation_ids: Optional[Sequence[str]] = None,
     ) -> str:
         async def _run() -> str:
             stream = await self.astream_chat(
@@ -108,9 +115,12 @@ class Gemini:
                 proxy=proxy,
                 debug=debug,
                 save_images=save_images,
+                conversation_ids=conversation_ids,
             )
             parts: list[str] = []
             async for chunk in stream:
+                if isinstance(chunk, str) and chunk.startswith("[session_ids] "):
+                    continue
                 if on_chunk is not None:
                     on_chunk(chunk)
                 parts.append(chunk)

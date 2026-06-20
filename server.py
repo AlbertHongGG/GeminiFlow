@@ -15,6 +15,7 @@ from aiohttp import web
 
 from gemini_flow import Gemini
 from gemini_flow.cookies import load_google_cookies
+from gemini_flow.session import SessionStore
 
 
 def _json_dumps(obj: object) -> str:
@@ -156,6 +157,15 @@ async def _run_gemini_stream(*, payload: dict[str, Any]):
     if not isinstance(auto_refresh_cookies, bool):
         raise ValueError("auto_refresh_cookies must be a boolean")
 
+    session_id = payload.get("session_id")
+    if session_id is not None and not isinstance(session_id, str):
+        raise ValueError("session_id must be a string")
+    
+    conversation_ids = None
+    if session_id:
+        store = SessionStore()
+        conversation_ids = store.load(session_id)
+
     images = _parse_images(payload)
 
     ai = Gemini(
@@ -170,6 +180,7 @@ async def _run_gemini_stream(*, payload: dict[str, Any]):
         images=images,
         language=language,
         save_images=False,
+        conversation_ids=conversation_ids,
     )
     return stream
 
@@ -201,9 +212,15 @@ async def chat(request: web.Request) -> web.Response:
     images_saved: list[str] = []
 
     cookies = _load_download_cookies()
+    session_id = payload.get("session_id")
     async with aiohttp.ClientSession(cookies=cookies) as http_session:
         try:
             async for chunk in stream:
+                if isinstance(chunk, str) and chunk.startswith("[session_ids] "):
+                    if session_id:
+                        store = SessionStore()
+                        store.save(session_id, json.loads(chunk[len("[session_ids] "):]))
+                    continue
                 if isinstance(chunk, str) and chunk.startswith("[image saved] "):
                     path = chunk[len("[image saved] ") :].strip()
                     if path:
@@ -271,11 +288,17 @@ async def stream(request: web.Request) -> web.StreamResponse:
     try:
         gemini_stream = await _run_gemini_stream(payload=payload)
         cookies = _load_download_cookies()
+        session_id = payload.get("session_id")
         has_text = False
         has_images = False
         async with aiohttp.ClientSession(cookies=cookies) as http_session:
             async for chunk in gemini_stream:
-                if isinstance(chunk, str) and chunk.startswith("[image saved] "):
+                if isinstance(chunk, str) and chunk.startswith("[session_ids] "):
+                    if session_id:
+                        store = SessionStore()
+                        store.save(session_id, json.loads(chunk[len("[session_ids] "):]))
+                    continue
+                elif isinstance(chunk, str) and chunk.startswith("[image saved] "):
                     path = chunk[len("[image saved] ") :].strip()
                     has_images = True
                     await resp.write(_sse_format(event="image", data={"path": path}))

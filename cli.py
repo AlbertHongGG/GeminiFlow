@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from gemini_flow.gemini.client import GeminiWebClient  # noqa: E402
 from gemini_flow.gemini.protocol import MODEL_HEADERS  # noqa: E402
+from gemini_flow.session import SessionStore  # noqa: E402
+import json
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -33,6 +35,7 @@ def _build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--lang", default="zh-TW")
     chat.add_argument("--proxy", default=None)
     chat.add_argument("--debug", action="store_true", help="Print debug diagnostics")
+    chat.add_argument("--session-id", default=None, help="Maintain chat history with this session ID")
 
     return p
 
@@ -46,8 +49,15 @@ async def _run_chat(
     lang: str,
     proxy: Optional[str],
     debug: bool,
+    session_id: Optional[str],
 ) -> int:
     try:
+        conversation_ids = None
+        store = None
+        if session_id:
+            store = SessionStore()
+            conversation_ids = store.load(session_id)
+
         client = GeminiWebClient()
         stream = await client.chat(
             prompt=prompt,
@@ -57,9 +67,16 @@ async def _run_chat(
             images=images,
             proxy=proxy,
             debug=debug,
+            conversation_ids=conversation_ids,
         )
         had_output = False
         async for chunk in stream:
+            if isinstance(chunk, str) and chunk.startswith("[session_ids] "):
+                if session_id and store:
+                    ids = json.loads(chunk[len("[session_ids] "):])
+                    store.save(session_id, ids)
+                continue
+
             had_output = True
             print(chunk, end="", flush=True)
         print()
@@ -87,6 +104,7 @@ def main() -> None:
                     lang=args.lang,
                     proxy=args.proxy,
                     debug=args.debug,
+                    session_id=args.session_id,
                 )
             )
         )
