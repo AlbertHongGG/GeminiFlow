@@ -36,3 +36,4 @@ htmlcov/
 
 /user_cookies/*
 !/user_cookies/.gitkeep
+package_ex/

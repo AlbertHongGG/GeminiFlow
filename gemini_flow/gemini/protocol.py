@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import random
 import re
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
 
 from ..types import GeminiTokens
@@ -14,7 +15,7 @@ REQUEST_URL = (
     "https://gemini.google.com/_/BardChatUi/data/assistant.lamda."
     "BardFrontendService/StreamGenerate"
 )
-REQUEST_BL_PARAM = "boq_assistant-bard-web-server_20240519.16_p0"
+REQUEST_BL_PARAM = "boq_assistant-bard-web-server_20260618.10_p0"
 
 DEFAULT_HEADERS = {
     "authority": "gemini.google.com",
@@ -31,26 +32,14 @@ DEFAULT_HEADERS = {
 REQUIRED_COOKIE_NAME = "__Secure-1PSID"
 
 MODEL_HEADERS: Dict[str, Dict[str, str]] = {
-    "gemini-3-pro-thinking": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"e051ce1aa80aa576",null,null,0,[4],null,null,2]'
-    },
-    "gemini-3-pro-new": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4],null,null,2]'
-    },
     "gemini-3-pro": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"9d8ca3786ebdfbea",null,null,0,[4]]'
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3,1,"{ext_uuid}"]'
+    },
+    "gemini-3.5-flash": {
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
     },
     "gemini-3-pro-image-preview": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4],null,null,2]'
-    },
-    "gemini-3-flash": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4],null,null,2]'
-    },
-    "gemini-2.5-pro": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"61530e79959ab139",null,null,null,[4]]'
-    },
-    "gemini-2.5-flash": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"9ec249fc9ad08861",null,null,null,[4]]'
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3,2,"{ext_uuid}"]'
     },
 }
 
@@ -62,6 +51,8 @@ class GeminiRequest:
     tokens: GeminiTokens
     model: str
     uploads: Optional[Sequence[Tuple[str, str]]] = None
+    req_uuid: str = field(default_factory=lambda: str(uuid.uuid4()).upper())
+    ext_uuid: str = field(default_factory=lambda: str(uuid.uuid4()).upper())
 
     def params(self) -> Dict[str, str]:
         return {
@@ -73,14 +64,38 @@ class GeminiRequest:
         }
 
     def data(self) -> Dict[str, str]:
-        inner = build_request(self.prompt, self.language, uploads=self.uploads)
+        base_headers = MODEL_HEADERS.get(self.model)
+        p79, p80 = 1, 1
+        if base_headers and "x-goog-ext-525001261-jspb" in base_headers:
+            try:
+                arr = json.loads(base_headers["x-goog-ext-525001261-jspb"])
+                if len(arr) >= 16:
+                    p79, p80 = arr[14], arr[15]
+            except Exception:
+                pass
+
+        if "gemini-3-pro" in self.model or "gemini-3.5-flash" in self.model:
+            inner = build_request(self.prompt, self.language, uploads=self.uploads, req_uuid=self.req_uuid, p79=p79, p80=p80)
+        else:
+            inner = build_request(self.prompt, self.language, uploads=self.uploads)
         return {
             "at": self.tokens.snlm0e,
             "f.req": json.dumps([None, json.dumps(inner)]),
         }
 
     def headers(self) -> Optional[Dict[str, str]]:
-        return MODEL_HEADERS.get(self.model)
+        base_headers = MODEL_HEADERS.get(self.model)
+        if not base_headers:
+            return None
+        
+        headers = dict(base_headers)
+        if "x-goog-ext-525001261-jspb" in headers:
+            headers["x-goog-ext-525001261-jspb"] = headers["x-goog-ext-525001261-jspb"].format(ext_uuid=self.ext_uuid)
+        
+        if "gemini-3-pro" in self.model or "gemini-3.5-flash" in self.model:
+            headers["x-goog-ext-525005358-jspb"] = json.dumps([self.req_uuid, 1], separators=(",", ":"))
+            
+        return headers
 
 
 def extract_tokens(html: str) -> Optional[GeminiTokens]:
@@ -102,26 +117,51 @@ def build_request(
     language: str,
     *,
     uploads: Optional[Sequence[Tuple[str, str]]] = None,
+    req_uuid: Optional[str] = None,
+    p79: int = 1,
+    p80: int = 1,
 ) -> list:
     image_list = (
         [[[upload_ref, 1], image_name] for upload_ref, image_name in uploads]
         if uploads
         else []
     )
-    return [
-        [prompt, 0, None, image_list, None, None, 0],
-        [language],
-        [None, None, None, None, None, []],
-        None,
-        None,
-        None,
-        [1],
-        0,
-        [],
-        [],
-        1,
-        0,
-    ]
+    if req_uuid is None:
+        return [
+            [prompt, 0, None, image_list, None, None, 0],
+            [language],
+            [None, None, None, None, None, []],
+            None,
+            None,
+            None,
+            [1],
+            0,
+            [],
+            [],
+            1,
+            0,
+        ]
+    else:
+        arr = [None] * 81
+        arr[0] = [prompt, 0, None, image_list, None, None, 0]
+        arr[1] = [language]
+        arr[2] = ["", "", "", None, None, None, None, None, None, ""]
+        arr[6] = [0]
+        arr[7] = 1
+        arr[10] = 1
+        arr[11] = 0
+        arr[17] = [[0]]
+        arr[18] = 0
+        arr[27] = 1
+        arr[30] = [4]
+        arr[41] = [1]
+        arr[53] = 0
+        arr[59] = req_uuid
+        arr[61] = []
+        arr[68] = 1
+        arr[79] = p79
+        arr[80] = p80
+        return arr
 
 
 def iter_response_text_chunks(full_text: str) -> Iterator[str]:

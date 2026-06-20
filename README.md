@@ -4,26 +4,26 @@
 
 ```bash
 cd projects/gemini_flow
-python -m pip install -r requirements.txt
+uv sync
 ```
 
 ## Run
 
 ```bash
-python cli.py chat -c user_cookies "用繁中回覆一句：測試成功"
+uv run python cli.py chat -c user_cookies "用繁中回覆一句：測試成功"
 ```
 
 Choose model:
 
 ```bash
-python cli.py chat -m gemini-3-pro -c user_cookies "用繁中回覆一句：測試成功"
-python cli.py chat -m gemini-3-flash -c user_cookies "用繁中回覆一句：測試成功"
+uv run python cli.py chat -m gemini-3-pro -c user_cookies "用繁中回覆一句：測試成功"
+uv run python cli.py chat -m gemini-3.5-flash -c user_cookies "用繁中回覆一句：測試成功"
 ```
 
 Debug mode (prints token/response previews):
 
 ```bash
-python cli.py chat --debug -c user_cookies "hello"
+uv run python cli.py chat --debug -c user_cookies "hello"
 ```
 
 ## Server
@@ -31,7 +31,7 @@ python cli.py chat --debug -c user_cookies "hello"
 Start an HTTP server:
 
 ```bash
-python server.py --host 127.0.0.1 --port 8000
+uv run python server.py --host 127.0.0.1 --port 8000
 ```
 
 Health check:
@@ -45,7 +45,7 @@ Chat (returns full text + any saved image paths):
 ```bash
 curl -X POST http://127.0.0.1:8000/chat \
 	-H "Content-Type: application/json" \
-	-d '{"prompt":"用繁中回覆一句：測試成功","model":"gemini-2.5-pro"}'
+	-d '{"prompt":"用繁中回覆一句：測試成功","model":"gemini-3.5-flash"}'
 ```
 
 Stream (SSE):
