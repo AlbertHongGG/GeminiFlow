@@ -19,6 +19,7 @@ class GeminiFlowClient:
 
     async def chat(self, 
                    prompt: str, 
+                   system_prompt: Optional[str] = None,
                    model: str = "gemini-3-pro", 
                    language: str = "zh-TW", 
                    images: Optional[List[str]] = None,
@@ -34,6 +35,8 @@ class GeminiFlowClient:
             "language": language,
             "save_images": save_images
         }
+        if system_prompt:
+            payload["system_prompt"] = system_prompt
         if images:
             payload["images"] = images
         if session_id:
@@ -49,6 +52,7 @@ class GeminiFlowClient:
 
     async def stream(self, 
                      prompt: str, 
+                     system_prompt: Optional[str] = None,
                      model: str = "gemini-3-pro", 
                      language: str = "zh-TW", 
                      images: Optional[List[str]] = None,
@@ -64,6 +68,8 @@ class GeminiFlowClient:
             "language": language,
             "save_images": save_images
         }
+        if system_prompt:
+            payload["system_prompt"] = system_prompt
         if images:
             payload["images"] = images
         if session_id:

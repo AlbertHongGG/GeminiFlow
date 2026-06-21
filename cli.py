@@ -28,6 +28,7 @@ def _build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--proxy", default=None)
     chat.add_argument("--debug", action="store_true", help="Print debug diagnostics")
     chat.add_argument("--session-id", default=None, help="Maintain chat history with this session ID")
+    chat.add_argument("--system-prompt", default=None, help="System prompt to set context/behavior")
 
     return p
 

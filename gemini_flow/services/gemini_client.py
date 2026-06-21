@@ -84,8 +84,12 @@ class GeminiClient:
             if sess:
                 conversation_ids = sess.conversation_ids
 
+        combined_prompt = request.prompt
+        if request.system_prompt:
+            combined_prompt = f"System:\n{request.system_prompt}\n\nUser:\n{request.prompt}"
+
         builder = ProtocolBuilder(
-            prompt=request.prompt,
+            prompt=combined_prompt,
             language=request.language,
             model=request.model,
             tokens=tokens,

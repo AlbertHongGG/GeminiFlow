@@ -8,6 +8,7 @@ class ImagePayload(BaseModel):
 
 class ChatRequest(BaseModel):
     prompt: str
+    system_prompt: Optional[str] = None
     model: str = "gemini-3-pro"
     language: str = "zh-TW"
     images: List[ImagePayload] = Field(default_factory=list)
