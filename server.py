@@ -15,12 +15,17 @@ from pydantic import ValidationError
 from gemini_flow.models import ChatRequest, ImagePayload
 from gemini_flow.services.gemini_client import GeminiClient
 from gemini_flow.exceptions import AuthenticationError, NetworkError, PayloadError, GeminiFlowError
+from gemini_flow.config import DEFAULT_IMAGE_OUTPUT_DIR
 
 def _json_dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
 def _json_error(message: str, *, status: int = 400) -> web.Response:
     return web.json_response({"error": message}, status=status, dumps=_json_dumps)
+
+def _get_url_for_image(request: web.Request, filepath: str) -> str:
+    filename = Path(filepath).name
+    return f"{request.scheme}://{request.host}/images/{filename}"
 
 def _decode_base64_image(value: str, index: int) -> ImagePayload:
     if value.startswith("data:image/"):
@@ -104,7 +109,7 @@ async def chat(request: web.Request) -> web.Response:
             if chunk.text:
                 text_parts.append(chunk.text)
             if chunk.image_saved_path:
-                images_saved.append(chunk.image_saved_path)
+                images_saved.append(_get_url_for_image(request, chunk.image_saved_path))
             elif chunk.image_url:
                 images_saved.append(chunk.image_url)
                 
@@ -160,8 +165,9 @@ async def stream(request: web.Request) -> web.StreamResponse:
                 full_text.append(chunk.text)
                 await resp.write(_sse_format(event="text", data={"chunk": chunk.text}))
             if chunk.image_saved_path:
-                response_images.append(chunk.image_saved_path)
-                await resp.write(_sse_format(event="image", data={"path": chunk.image_saved_path}))
+                img_url = _get_url_for_image(request, chunk.image_saved_path)
+                response_images.append(img_url)
+                await resp.write(_sse_format(event="image", data={"url": img_url}))
             elif chunk.image_url:
                 response_images.append(chunk.image_url)
                 await resp.write(_sse_format(event="image", data={"url": chunk.image_url}))
@@ -189,6 +195,11 @@ async def stream(request: web.Request) -> web.StreamResponse:
 def create_app() -> web.Application:
     # 增加 client_max_size 到 50MB 避免大圖上傳時發生 413/400 錯誤
     app = web.Application(client_max_size=1024 * 1024 * 50)
+    
+    # 確保圖片輸出資料夾存在，並註冊為靜態路由
+    DEFAULT_IMAGE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    app.router.add_static("/images", DEFAULT_IMAGE_OUTPUT_DIR)
+    
     app.router.add_get("/health", health)
     app.router.add_post("/chat", chat)
     app.router.add_post("/stream", stream)

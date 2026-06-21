@@ -100,17 +100,15 @@ class ResponseParser:
                 for item in value.values():
                     yield from _walk_strings(item)
 
-        def _is_likely_image_url(text: str) -> bool:
+        import re
+        url_regex = re.compile(r'(https?://(?:googleusercontent\.com|gstatic\.com|content-push\.googleapis\.com|lh3\.googleusercontent\.com)[^\s"\'\\]+)')
+        
+        def _extract_urls_from_text(text: str) -> Iterator[str]:
             if text.startswith("data:image/"):
-                return True
-            if not (text.startswith("https://") or text.startswith("http://")):
-                return False
-            lowered = text.lower()
-            if any(d in lowered for d in ["googleusercontent.com", "gstatic.com", "content-push.googleapis.com"]):
-                return True
-            if any(lowered.endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp"]):
-                return True
-            return False
+                yield text
+                return
+            for match in url_regex.finditer(text):
+                yield match.group(1)
 
         try:
             line = json.loads(raw_line)
@@ -130,9 +128,9 @@ class ResponseParser:
         out: List[str] = []
         seen = set()
         for s in _walk_strings(response_part):
-            if not s or s in seen:
-                continue
-            if _is_likely_image_url(s):
-                seen.add(s)
-                out.append(s)
+            if not s: continue
+            for url in _extract_urls_from_text(s):
+                if url not in seen:
+                    seen.add(url)
+                    out.append(url)
         return out

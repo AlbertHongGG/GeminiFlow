@@ -104,9 +104,6 @@ class GeminiClient:
         parser = ResponseParser()
         emitted_session_ids = False
         
-        normalized_model = request.model.strip().lower()
-        is_image_model = "-image" in normalized_model
-        
         final_image_candidate = None
         fallback_image_candidate = None
         
@@ -128,15 +125,14 @@ class GeminiClient:
                 raw_line = raw_line.rstrip("\r")
                 if not raw_line: continue
                 
-                if is_image_model:
-                    for candidate in parser.extract_image_candidates(raw_line):
-                        norm = _normalize(candidate)
-                        if not norm: continue
-                        if _is_placeholder(norm):
-                            if fallback_image_candidate is None: fallback_image_candidate = norm
-                            continue
-                        if _is_output(norm):
-                            final_image_candidate = norm
+                for candidate in parser.extract_image_candidates(raw_line):
+                    norm = _normalize(candidate)
+                    if not norm: continue
+                    if _is_placeholder(norm):
+                        if fallback_image_candidate is None: fallback_image_candidate = norm
+                        continue
+                    if _is_output(norm):
+                        final_image_candidate = norm
 
                 delta, ids = parser.extract_text_delta(raw_line)
                 
@@ -151,15 +147,14 @@ class GeminiClient:
 
         if buffer.strip():
             raw_line = buffer.rstrip("\r\n")
-            if is_image_model:
-                for candidate in parser.extract_image_candidates(raw_line):
-                    norm = _normalize(candidate)
-                    if not norm: continue
-                    if _is_placeholder(norm):
-                        if fallback_image_candidate is None: fallback_image_candidate = norm
-                        continue
-                    if _is_output(norm):
-                        final_image_candidate = norm
+            for candidate in parser.extract_image_candidates(raw_line):
+                norm = _normalize(candidate)
+                if not norm: continue
+                if _is_placeholder(norm):
+                    if fallback_image_candidate is None: fallback_image_candidate = norm
+                    continue
+                if _is_output(norm):
+                    final_image_candidate = norm
             
             delta, ids = parser.extract_text_delta(raw_line)
             if ids and not emitted_session_ids:
@@ -171,24 +166,23 @@ class GeminiClient:
             if delta:
                 yield ChatResponseChunk(text=delta)
 
-        if is_image_model:
-            img_url = final_image_candidate or fallback_image_candidate
-            if img_url:
-                chunk = ChatResponseChunk(image_url=img_url)
-                if request.save_images and final_image_candidate:
-                    try:
-                        out_dir = DEFAULT_IMAGE_OUTPUT_DIR
-                        out_dir.mkdir(parents=True, exist_ok=True)
-                        out_path = out_dir / f"gemini_{request.model}_{int(time.time())}.png"
-                        if img_url.startswith("data:image/"):
-                            _, b64 = img_url.split(",", 1)
-                            out_path.write_bytes(base64.b64decode(b64))
-                            chunk.image_saved_path = str(out_path)
-                        else:
-                            img_data = await client.download_file(img_url)
-                            out_path.write_bytes(img_data)
-                            chunk.image_saved_path = str(out_path)
-                    except Exception as e:
-                        if request.debug:
-                            print(f"[debug] Save image failed: {e}")
-                yield chunk
+        img_url = final_image_candidate or fallback_image_candidate
+        if img_url:
+            chunk = ChatResponseChunk(image_url=img_url)
+            if request.save_images and final_image_candidate:
+                try:
+                    out_dir = DEFAULT_IMAGE_OUTPUT_DIR
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    out_path = out_dir / f"gemini_{request.model}_{int(time.time())}.png"
+                    if img_url.startswith("data:image/"):
+                        _, b64 = img_url.split(",", 1)
+                        out_path.write_bytes(base64.b64decode(b64))
+                        chunk.image_saved_path = str(out_path)
+                    else:
+                        img_data = await client.download_file(img_url)
+                        out_path.write_bytes(img_data)
+                        chunk.image_saved_path = str(out_path)
+                except Exception as e:
+                    if request.debug:
+                        print(f"[debug] Save image failed: {e}")
+            yield chunk
