@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from gemini_flow.models import ChatRequest, ImagePayload
 from gemini_flow.services.gemini_client import GeminiClient
+from gemini_flow.exceptions import AuthenticationError, NetworkError, PayloadError, GeminiFlowError
 
 def _json_dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False)
@@ -70,8 +71,12 @@ async def _read_chat_request(request: web.Request) -> ChatRequest:
         return req
     except ValidationError as e:
         raise ValueError(f"Invalid parameters: {e}")
-    except Exception as e:
+    except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON body: {e}")
+    except ValueError:
+        raise
+    except Exception as e:
+        raise Exception(f"Failed to read request: {e}")
 
 async def health(_: web.Request) -> web.Response:
     return web.json_response({"ok": True}, dumps=_json_dumps)
@@ -79,8 +84,12 @@ async def health(_: web.Request) -> web.Response:
 async def chat(request: web.Request) -> web.Response:
     try:
         chat_req = await _read_chat_request(request)
+    except web.HTTPRequestEntityTooLarge:
+        return _json_error("Payload too large. Please upload smaller images (limit is 50MB).", status=413)
+    except ValueError as e:
+        return _json_error(str(e), status=400)
     except Exception as e:
-        return _json_error(str(e))
+        return _json_error(str(e), status=500)
 
     from gemini_flow.infra.ai_logger import AILogger
     logger = AILogger()
@@ -100,8 +109,16 @@ async def chat(request: web.Request) -> web.Response:
                 
         # Log the complete interaction
         logger.log_interaction(chat_req, "".join(text_parts), images_saved)
+    except AuthenticationError as e:
+        return _json_error(f"Authentication Failed: {e}", status=401)
+    except NetworkError as e:
+        return _json_error(f"Network Error: {e}", status=502)
+    except PayloadError as e:
+        return _json_error(f"Payload Error: {e}", status=422)
+    except GeminiFlowError as e:
+        return _json_error(str(e), status=400)
     except Exception as e:
-        return _json_error(str(e), status=500)
+        return _json_error(f"Internal Server Error: {e}", status=500)
 
     return web.json_response({"text": "".join(text_parts), "images": images_saved}, dumps=_json_dumps)
 
@@ -112,8 +129,12 @@ def _sse_format(*, event: str, data: object) -> bytes:
 async def stream(request: web.Request) -> web.StreamResponse:
     try:
         chat_req = await _read_chat_request(request)
+    except web.HTTPRequestEntityTooLarge:
+        return _json_error("Payload too large. Please upload smaller images (limit is 50MB).", status=413)
+    except ValueError as e:
+        return _json_error(str(e), status=400)
     except Exception as e:
-        return web.Response(status=400, text=str(e))
+        return _json_error(str(e), status=500)
 
     resp = web.StreamResponse(
         status=200,
@@ -149,16 +170,24 @@ async def stream(request: web.Request) -> web.StreamResponse:
         logger.log_interaction(chat_req, "".join(full_text), response_images)
     except ConnectionResetError:
         pass
+    except AuthenticationError as e:
+        try: await resp.write(_sse_format(event="error", data={"error": f"Authentication Failed: {e}", "status": 401}))
+        except Exception: pass
+    except NetworkError as e:
+        try: await resp.write(_sse_format(event="error", data={"error": f"Network Error: {e}", "status": 502}))
+        except Exception: pass
+    except PayloadError as e:
+        try: await resp.write(_sse_format(event="error", data={"error": f"Payload Error: {e}", "status": 422}))
+        except Exception: pass
     except Exception as e:
-        try:
-            await resp.write(_sse_format(event="error", data={"error": str(e)}))
-        except Exception:
-            pass
+        try: await resp.write(_sse_format(event="error", data={"error": f"Internal Server Error: {e}", "status": 500}))
+        except Exception: pass
 
     return resp
 
 def create_app() -> web.Application:
-    app = web.Application()
+    # 增加 client_max_size 到 50MB 避免大圖上傳時發生 413/400 錯誤
+    app = web.Application(client_max_size=1024 * 1024 * 50)
     app.router.add_get("/health", health)
     app.router.add_post("/chat", chat)
     app.router.add_post("/stream", stream)

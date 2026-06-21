@@ -41,6 +41,9 @@ class GeminiFlowClient:
             
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{self.base_url}/chat", json=payload) as resp:
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise Exception(f"HTTP {resp.status}: {text}")
                 resp.raise_for_status()
                 return await resp.json()
 
