@@ -49,18 +49,31 @@ async def _run_chat(args: argparse.Namespace) -> int:
             debug=args.debug
         )
         
+        from gemini_flow.infra.ai_logger import AILogger
+        logger = AILogger()
+        
         client = GeminiClient(cookies_dir=args.cookies_dir)
         
         had_output = False
+        full_text = []
+        response_images = []
+        
         async for chunk in client.stream_chat(req):
             if chunk.text:
                 had_output = True
+                full_text.append(chunk.text)
                 print(chunk.text, end="", flush=True)
             if chunk.image_saved_path:
+                response_images.append(chunk.image_saved_path)
                 print(f"\n[Image saved to: {chunk.image_saved_path}]")
             elif chunk.image_url:
+                response_images.append(chunk.image_url)
                 print(f"\n[Image URL: {chunk.image_url}]")
         print()
+        
+        # Log the complete interaction
+        logger.log_interaction(req, "".join(full_text), response_images)
+        
         if args.debug and not had_output:
             print("[debug] No text chunks were output.")
         return 0

@@ -82,6 +82,9 @@ async def chat(request: web.Request) -> web.Response:
     except Exception as e:
         return _json_error(str(e))
 
+    from gemini_flow.infra.ai_logger import AILogger
+    logger = AILogger()
+
     client = GeminiClient()
     text_parts = []
     images_saved = []
@@ -92,6 +95,11 @@ async def chat(request: web.Request) -> web.Response:
                 text_parts.append(chunk.text)
             if chunk.image_saved_path:
                 images_saved.append(chunk.image_saved_path)
+            elif chunk.image_url:
+                images_saved.append(chunk.image_url)
+                
+        # Log the complete interaction
+        logger.log_interaction(chat_req, "".join(text_parts), images_saved)
     except Exception as e:
         return _json_error(str(e), status=500)
 
@@ -117,16 +125,28 @@ async def stream(request: web.Request) -> web.StreamResponse:
     )
     await resp.prepare(request)
 
+    from gemini_flow.infra.ai_logger import AILogger
+    logger = AILogger()
+    
     client = GeminiClient()
+    full_text = []
+    response_images = []
+    
     try:
         async for chunk in client.stream_chat(chat_req):
             if chunk.text:
+                full_text.append(chunk.text)
                 await resp.write(_sse_format(event="text", data={"chunk": chunk.text}))
             if chunk.image_saved_path:
+                response_images.append(chunk.image_saved_path)
                 await resp.write(_sse_format(event="image", data={"path": chunk.image_saved_path}))
             elif chunk.image_url:
+                response_images.append(chunk.image_url)
                 await resp.write(_sse_format(event="image", data={"url": chunk.image_url}))
         await resp.write(_sse_format(event="done", data={}))
+        
+        # Log the complete interaction
+        logger.log_interaction(chat_req, "".join(full_text), response_images)
     except ConnectionResetError:
         pass
     except Exception as e:
