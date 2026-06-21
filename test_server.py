@@ -146,11 +146,11 @@ async def main():
     image_b64 = get_image_base64(str(input_image_path))
     
     await test_health(client)
-    # await test_chat_text(client)
-    # await test_stream_text(client)
+    await test_chat_text(client)
+    await test_stream_text(client)
     # await test_chat_image_description(client, image_b64)
-    await test_chat_image_generation(client, image_b64)
-    # await test_chat_session(client)
+    # await test_chat_image_generation(client, image_b64)
+    await test_chat_session(client)
         
     print("--------------------------------------------------")
     print("All SDK tests completed.")

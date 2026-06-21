@@ -62,7 +62,5 @@ The cookies directory should contain one or more `*.json` files exported from Ch
 Each file must be a JSON list of objects including at least: `domain`, `name`, `value`.
 
 ## Notes
-- If you see `SNlM0e token not found`, your cookies are likely expired.
-```
-chrome.exe --user-data-dir="C:\...\GeminiFlow\user_cookies\.pw-profile"
-```
+- If you see `SNlM0e token not found`, your cookies are likely expired. The system will attempt to refresh them automatically using a headless Playwright instance.
+- **IMPORTANT**: Avoid manually opening `chrome.exe --user-data-dir="C:\...\GeminiFlow\user_cookies\.pw-profile"` while the script or server is running. Doing so will lock the profile, causing Playwright to throw an `exitCode=21` error and block the authentication flow. If you must open it manually to log in, ensure you completely close the browser before running any scripts.
