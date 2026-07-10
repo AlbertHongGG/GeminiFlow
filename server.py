@@ -53,10 +53,9 @@ def _decode_base64_image(value: str, index: int) -> ImagePayload:
 
 async def _read_chat_request(request: web.Request) -> ChatRequest:
     try:
-        raw = await request.read()
-        if not raw: raise ValueError("Empty body")
-        text = raw.decode("utf-8", errors="ignore")
-        obj = json.loads(text)
+        if not request.can_read_body:
+            raise ValueError("Empty body")
+        obj = await request.json()
         
         # parse images
         images = []

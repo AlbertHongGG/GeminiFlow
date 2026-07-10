@@ -39,6 +39,7 @@ class AILogger:
         log_data = {
             "request": {
                 "prompt": request.prompt,
+                "system_prompt": request.system_prompt
             },
             "response": {
                 "text": response_text,

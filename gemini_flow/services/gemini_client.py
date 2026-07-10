@@ -137,7 +137,6 @@ class GeminiClient:
         img_url = final_image_candidate or fallback_image_candidate
         if img_url:
             logger.info(f"Image generation detected: {img_url}")
-            yield ChatResponseChunk(image_url=img_url)
             
             if final_image_candidate:
                 try:
@@ -145,5 +144,8 @@ class GeminiClient:
                     yield ChatResponseChunk(image_local_path=local_path)
                 except Exception as e:
                     logger.error(f"Failed to download generated image: {e}")
+                    yield ChatResponseChunk(image_url=img_url)
+            else:
+                yield ChatResponseChunk(image_url=img_url)
         
         logger.info("Chat stream completed.")
