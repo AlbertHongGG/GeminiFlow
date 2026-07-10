@@ -1,89 +1,68 @@
-import asyncio
-import base64
-import os
-import re
-import time
-from pathlib import Path
-from typing import Optional, AsyncGenerator, List, Tuple
-from ..models import ChatRequest, ChatResponseChunk, ImagePayload, SessionData
-from ..config import DEFAULT_COOKIES_DIR, GEMINI_BASE_URL, GEMINI_REQUEST_URL, UPLOAD_IMAGE_URL, UPLOAD_IMAGE_HEADERS, REQUEST_BL_PARAM, DEFAULT_HTTP_HEADERS, MODEL_HEADERS, DEFAULT_IMAGE_OUTPUT_DIR
-from ..exceptions import NetworkError, PayloadError, AuthenticationError
+import logging
+from typing import AsyncGenerator
+from ..models import ChatRequest, ChatResponseChunk, SessionData
+from ..config import AppConfig, REQUEST_BL_PARAM, MODEL_HEADERS
 from ..infra.cookie_manager import CookieManager
 from ..infra.auth import AuthManager
 from ..infra.http_client import HttpClient
-from ..core.protocol_builder import extract_tokens, ProtocolBuilder
+from ..core.protocol_builder import ProtocolBuilder
 from ..core.response_parser import ResponseParser
+from .gemini_api import GeminiAPI
+from .image_handler import ImageHandler
+from .session_manager import SessionManager
+
+logger = logging.getLogger("gemini_flow.client")
 
 class GeminiClient:
-    def __init__(self, cookies_dir: Path = DEFAULT_COOKIES_DIR):
-        self.cookies_dir = cookies_dir
-        self.cookie_manager = CookieManager(cookies_dir)
-        self.auth_manager = AuthManager(cookies_dir)
-
-    async def _upload_images(self, images: List[ImagePayload], proxy: Optional[str]) -> List[Tuple[str, str]]:
-        client = HttpClient(headers=UPLOAD_IMAGE_HEADERS, proxy=proxy)
-        uploads = []
-        for img in images:
-            try:
-                headers = {
-                    "size": str(len(img.data)),
-                    "x-goog-upload-command": "start",
-                }
-                data_name = f"File name: {img.filename}" if img.filename else None
-                resp = await client.post_form(UPLOAD_IMAGE_URL, data=data_name, headers=headers)
-                upload_url = resp.headers.get("X-Goog-Upload-Url")
-                if not upload_url:
-                    raise NetworkError("Missing X-Goog-Upload-Url")
-                
-                headers["x-goog-upload-command"] = "upload, finalize"
-                headers["X-Goog-Upload-Offset"] = "0"
-                resp = await client.post_form(upload_url, data=img.data, headers=headers)
-                upload_ref = await resp.text()
-                uploads.append((upload_ref, img.filename))
-            except Exception as e:
-                raise NetworkError(f"Image upload failed: {e}") from e
-        return uploads
+    def __init__(self, config: AppConfig, http_client: HttpClient):
+        self.config = config
+        self.http_client = http_client
+        self.cookie_manager = CookieManager(config.cookies_dir)
+        self.auth_manager = AuthManager(config.cookies_dir)
+        self.api = GeminiAPI(http_client)
+        self.image_handler = ImageHandler(http_client, config)
+        self.session_manager = SessionManager()
 
     async def stream_chat(self, request: ChatRequest) -> AsyncGenerator[ChatResponseChunk, None]:
+        logger.info(f"Starting chat stream for model: {request.model}")
+        
+        # 1. Ensure Auth
         try:
             cookies = self.cookie_manager.get_google_cookies()
-        except AuthenticationError:
-            if not request.auto_refresh_cookies:
-                raise
-            await self.auth_manager.ensure_cookies()
-            cookies = self.cookie_manager.get_google_cookies()
-
-        client = HttpClient(headers=DEFAULT_HTTP_HEADERS, cookies=cookies, proxy=request.proxy)
-
-        # Get tokens
-        try:
-            html = await client.get_text(GEMINI_BASE_URL)
-            tokens = extract_tokens(html)
-            if not tokens:
-                raise AuthenticationError("Tokens not found, cookies might be expired.")
         except Exception:
             if not request.auto_refresh_cookies:
                 raise
             await self.auth_manager.ensure_cookies()
             cookies = self.cookie_manager.get_google_cookies()
-            client.cookies = cookies
-            html = await client.get_text(GEMINI_BASE_URL)
-            tokens = extract_tokens(html)
-            if not tokens:
-                raise AuthenticationError("Tokens not found even after refresh.")
+        
+        self.http_client.update_cookies(cookies)
 
+        # 2. Get Tokens
+        try:
+            tokens = await self.api.fetch_tokens()
+        except Exception:
+            if not request.auto_refresh_cookies:
+                raise
+            logger.info("Tokens expired or invalid, refreshing cookies...")
+            await self.auth_manager.ensure_cookies()
+            cookies = self.cookie_manager.get_google_cookies()
+            self.http_client.update_cookies(cookies)
+            tokens = await self.api.fetch_tokens()
+
+        # 3. Upload Images
         uploads = []
         if request.images:
-            uploads = await self._upload_images(request.images, request.proxy)
+            logger.info(f"Uploading {len(request.images)} images...")
+            uploads = await self.api.upload_images(request.images)
 
-        from ..services.session_manager import SessionManager
-        session_manager = SessionManager()
+        # 4. Handle Sessions
         conversation_ids = []
         if request.session_id:
-            sess = session_manager.load(request.session_id)
+            sess = self.session_manager.load(request.session_id)
             if sess:
                 conversation_ids = sess.conversation_ids
 
+        # 5. Build Protocol
         combined_prompt = request.prompt
         if request.system_prompt:
             combined_prompt = f"System:\n{request.system_prompt}\n\nUser:\n{request.prompt}"
@@ -101,38 +80,27 @@ class GeminiClient:
         data = builder.build_payload(MODEL_HEADERS)
         headers = builder.build_headers(MODEL_HEADERS)
 
+        # 6. Stream and Parse
         parser = ResponseParser()
         emitted_session_ids = False
-        
         final_image_candidate = None
         fallback_image_candidate = None
         
-        # Helper to normalize URL
-        _CONTROL_RE = re.compile(r"[\x00-\x1F\x7F\u200B\u200C\u200D\uFEFF]")
-        def _normalize(v): return _CONTROL_RE.sub("", v.strip())
-        
-        def _is_placeholder(url):
-            return "googleusercontent.com/image_generation_content/" in url or ("lh3.googleusercontent.com/gg/" in url and "lh3.googleusercontent.com/gg-dl/" not in url)
-            
-        def _is_output(url):
-            return url.startswith("data:image/") or "lh3.googleusercontent.com/gg-dl/" in url
-            
         buffer = ""
-        async for chunk in client.post_stream(GEMINI_REQUEST_URL, params=params, data=data, headers=headers):
+        logger.debug("Generating stream...")
+        async for chunk in self.api.stream_generate(params, data, headers):
             buffer += chunk
             while "\n" in buffer:
                 raw_line, buffer = buffer.split("\n", 1)
                 raw_line = raw_line.rstrip("\r")
                 if not raw_line: continue
                 
-                for candidate in parser.extract_image_candidates(raw_line):
-                    norm = _normalize(candidate)
-                    if not norm: continue
-                    if _is_placeholder(norm):
-                        if fallback_image_candidate is None: fallback_image_candidate = norm
-                        continue
-                    if _is_output(norm):
-                        final_image_candidate = norm
+                for url in parser.extract_image_candidates(raw_line):
+                    image_type = parser.classify_image_url(url)
+                    if image_type == "placeholder":
+                        if not fallback_image_candidate: fallback_image_candidate = url
+                    elif image_type == "output":
+                        final_image_candidate = url
 
                 delta, ids = parser.extract_text_delta(raw_line)
                 
@@ -140,49 +108,42 @@ class GeminiClient:
                     emitted_session_ids = True
                     yield ChatResponseChunk(session_ids=ids)
                     if request.session_id:
-                        session_manager.save(SessionData(session_id=request.session_id, conversation_ids=ids))
+                        self.session_manager.save(SessionData(session_id=request.session_id, conversation_ids=ids))
 
                 if delta:
                     yield ChatResponseChunk(text=delta)
 
+        # Flush buffer
         if buffer.strip():
             raw_line = buffer.rstrip("\r\n")
-            for candidate in parser.extract_image_candidates(raw_line):
-                norm = _normalize(candidate)
-                if not norm: continue
-                if _is_placeholder(norm):
-                    if fallback_image_candidate is None: fallback_image_candidate = norm
-                    continue
-                if _is_output(norm):
-                    final_image_candidate = norm
+            for url in parser.extract_image_candidates(raw_line):
+                image_type = parser.classify_image_url(url)
+                if image_type == "placeholder":
+                    if not fallback_image_candidate: fallback_image_candidate = url
+                elif image_type == "output":
+                    final_image_candidate = url
             
             delta, ids = parser.extract_text_delta(raw_line)
             if ids and not emitted_session_ids:
                 emitted_session_ids = True
                 yield ChatResponseChunk(session_ids=ids)
                 if request.session_id:
-                    session_manager.save(SessionData(session_id=request.session_id, conversation_ids=ids))
+                    self.session_manager.save(SessionData(session_id=request.session_id, conversation_ids=ids))
 
             if delta:
                 yield ChatResponseChunk(text=delta)
 
+        # 7. Post-process Image
         img_url = final_image_candidate or fallback_image_candidate
         if img_url:
-            chunk = ChatResponseChunk(image_url=img_url)
-            if request.save_images and final_image_candidate:
+            logger.info(f"Image generation detected: {img_url}")
+            yield ChatResponseChunk(image_url=img_url)
+            
+            if final_image_candidate:
                 try:
-                    out_dir = DEFAULT_IMAGE_OUTPUT_DIR
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    out_path = out_dir / f"gemini_{request.model}_{int(time.time())}.png"
-                    if img_url.startswith("data:image/"):
-                        _, b64 = img_url.split(",", 1)
-                        out_path.write_bytes(base64.b64decode(b64))
-                        chunk.image_saved_path = str(out_path)
-                    else:
-                        img_data = await client.download_file(img_url)
-                        out_path.write_bytes(img_data)
-                        chunk.image_saved_path = str(out_path)
+                    local_path = await self.image_handler.download_image(img_url, request.model)
+                    yield ChatResponseChunk(image_local_path=local_path)
                 except Exception as e:
-                    if request.debug:
-                        print(f"[debug] Save image failed: {e}")
-            yield chunk
+                    logger.error(f"Failed to download generated image: {e}")
+        
+        logger.info("Chat stream completed.")

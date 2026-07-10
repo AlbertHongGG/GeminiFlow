@@ -4,6 +4,10 @@ import json
 from ..exceptions import AuthenticationError
 from ..config import REQUIRED_COOKIE_NAME, GEMINI_BASE_URL
 
+import logging
+
+logger = logging.getLogger("gemini_flow.auth")
+
 def has_required_cookie(cookie_export: Sequence[dict]) -> bool:
     for c in cookie_export:
         try:
@@ -23,11 +27,10 @@ def looks_like_login_redirect(url: str) -> bool:
     )
 
 class AuthManager:
-    def __init__(self, cookies_dir: Path, debug: bool = False):
+    def __init__(self, cookies_dir: Path):
         self.cookies_dir = cookies_dir
         self.cookies_path = cookies_dir / "auth_Gemini.json"
         self.profile_dir = cookies_dir / ".pw-profile"
-        self.debug = debug
         self.browser_channel = "chrome"
 
     async def _export_cookies_with_playwright(self, headless: bool) -> bool:
@@ -55,8 +58,7 @@ class AuthManager:
                 has_cookie = has_required_cookie(cookie_export)
                 logged_in = has_cookie and not looks_like_login_redirect(page.url)
 
-                if self.debug:
-                    print(f"[debug] playwright headless={headless} url={page.url} cookies={len(cookie_export)} has_{REQUIRED_COOKIE_NAME}={has_cookie}")
+                logger.debug(f"playwright headless={headless} url={page.url} cookies={len(cookie_export)} has_{REQUIRED_COOKIE_NAME}={has_cookie}")
 
                 if not logged_in:
                     return False
@@ -70,16 +72,15 @@ class AuthManager:
                 await ctx.close()
 
     async def ensure_cookies(self) -> Path:
-        print("[info] Attempting headless refresh of Gemini cookies...")
+        logger.info("Attempting headless refresh of Gemini cookies...")
         try:
             success = await self._export_cookies_with_playwright(headless=True)
         except Exception as e:
-            if self.debug:
-                print(f"[debug] playwright launch failed channel={self.browser_channel!r}: {e}")
+            logger.debug(f"playwright launch failed channel={self.browser_channel!r}: {e}")
             raise AuthenticationError(f"Playwright error: {e}") from e
 
         if success:
-            print("[info] Gemini cookies refreshed successfully (headless).")
+            logger.info("Gemini cookies refreshed successfully (headless).")
             return self.cookies_path
 
         raise AuthenticationError(

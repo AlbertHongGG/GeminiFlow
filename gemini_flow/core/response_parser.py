@@ -134,3 +134,20 @@ class ResponseParser:
                     seen.add(url)
                     out.append(url)
         return out
+
+    def classify_image_url(self, url: str) -> Optional[str]:
+        """
+        Classifies an image URL as either a 'placeholder' or 'output'.
+        Returns 'placeholder', 'output', or None if neither.
+        """
+        import re
+        _CONTROL_RE = re.compile(r"[\x00-\x1F\x7F\u200B\u200C\u200D\uFEFF]")
+        norm = _CONTROL_RE.sub("", url.strip())
+        if not norm:
+            return None
+            
+        if "googleusercontent.com/image_generation_content/" in norm or ("lh3.googleusercontent.com/gg/" in norm and "lh3.googleusercontent.com/gg-dl/" not in norm):
+            return "placeholder"
+        if norm.startswith("data:image/") or "lh3.googleusercontent.com/gg-dl/" in norm:
+            return "output"
+        return None

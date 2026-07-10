@@ -1,12 +1,11 @@
-from __future__ import annotations
-
 import argparse
 import asyncio
 import json
 import base64
+import logging
 from pathlib import Path
-from uuid import uuid4
 from typing import Any
+import os
 
 import aiohttp_cors
 from aiohttp import web
@@ -15,7 +14,11 @@ from pydantic import ValidationError
 from gemini_flow.models import ChatRequest, ImagePayload
 from gemini_flow.services.gemini_client import GeminiClient
 from gemini_flow.exceptions import AuthenticationError, NetworkError, PayloadError, GeminiFlowError
-from gemini_flow.config import DEFAULT_IMAGE_OUTPUT_DIR
+from gemini_flow.config import AppConfig
+from gemini_flow.infra.logger import setup_logging
+from gemini_flow.infra.http_client import HttpClient
+
+logger = logging.getLogger("gemini_flow.server")
 
 def _json_dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False)
@@ -69,10 +72,7 @@ async def _read_chat_request(request: web.Request) -> ChatRequest:
             language=obj.get("language", "zh-TW"),
             images=images,
             session_id=obj.get("session_id"),
-            proxy=obj.get("proxy"),
-            debug=obj.get("debug", False),
-            auto_refresh_cookies=obj.get("auto_refresh_cookies", True),
-            save_images=obj.get("save_images", True)
+            auto_refresh_cookies=obj.get("auto_refresh_cookies", True)
         )
         return req
     except ValidationError as e:
@@ -98,9 +98,12 @@ async def chat(request: web.Request) -> web.Response:
         return _json_error(str(e), status=500)
 
     from gemini_flow.infra.ai_logger import AILogger
-    logger = AILogger()
+    ai_logger = AILogger()
 
-    client = GeminiClient()
+    config = request.app["config"]
+    http_client = request.app["http_client"]
+    client = GeminiClient(config=config, http_client=http_client)
+    
     text_parts = []
     images_saved = []
 
@@ -108,13 +111,13 @@ async def chat(request: web.Request) -> web.Response:
         async for chunk in client.stream_chat(chat_req):
             if chunk.text:
                 text_parts.append(chunk.text)
-            if chunk.image_saved_path:
-                images_saved.append(_get_url_for_image(request, chunk.image_saved_path))
+            if chunk.image_local_path:
+                images_saved.append(_get_url_for_image(request, chunk.image_local_path))
             elif chunk.image_url:
                 images_saved.append(chunk.image_url)
                 
         # Log the complete interaction
-        logger.log_interaction(chat_req, "".join(text_parts), images_saved)
+        ai_logger.log_interaction(chat_req, "".join(text_parts), images_saved)
     except AuthenticationError as e:
         return _json_error(f"Authentication Failed: {e}", status=401)
     except NetworkError as e:
@@ -124,6 +127,7 @@ async def chat(request: web.Request) -> web.Response:
     except GeminiFlowError as e:
         return _json_error(str(e), status=400)
     except Exception as e:
+        logger.exception("Internal Server Error in chat")
         return _json_error(f"Internal Server Error: {e}", status=500)
 
     return web.json_response({"text": "".join(text_parts), "images": images_saved}, dumps=_json_dumps)
@@ -153,9 +157,12 @@ async def stream(request: web.Request) -> web.StreamResponse:
     await resp.prepare(request)
 
     from gemini_flow.infra.ai_logger import AILogger
-    logger = AILogger()
+    ai_logger = AILogger()
     
-    client = GeminiClient()
+    config = request.app["config"]
+    http_client = request.app["http_client"]
+    client = GeminiClient(config=config, http_client=http_client)
+    
     full_text = []
     response_images = []
     
@@ -164,8 +171,8 @@ async def stream(request: web.Request) -> web.StreamResponse:
             if chunk.text:
                 full_text.append(chunk.text)
                 await resp.write(_sse_format(event="text", data={"chunk": chunk.text}))
-            if chunk.image_saved_path:
-                img_url = _get_url_for_image(request, chunk.image_saved_path)
+            if chunk.image_local_path:
+                img_url = _get_url_for_image(request, chunk.image_local_path)
                 response_images.append(img_url)
                 await resp.write(_sse_format(event="image", data={"url": img_url}))
             elif chunk.image_url:
@@ -174,7 +181,7 @@ async def stream(request: web.Request) -> web.StreamResponse:
         await resp.write(_sse_format(event="done", data={}))
         
         # Log the complete interaction
-        logger.log_interaction(chat_req, "".join(full_text), response_images)
+        ai_logger.log_interaction(chat_req, "".join(full_text), response_images)
     except ConnectionResetError:
         pass
     except AuthenticationError as e:
@@ -187,18 +194,42 @@ async def stream(request: web.Request) -> web.StreamResponse:
         try: await resp.write(_sse_format(event="error", data={"error": f"Payload Error: {e}", "status": 422}))
         except Exception: pass
     except Exception as e:
+        logger.exception("Internal Server Error in stream")
         try: await resp.write(_sse_format(event="error", data={"error": f"Internal Server Error: {e}", "status": 500}))
         except Exception: pass
 
     return resp
 
+async def init_app_state(app: web.Application):
+    # Initialize global state
+    config = AppConfig.from_env()
+    setup_logging(config)
+    
+    # Store config and create http client context
+    app["config"] = config
+    app["http_client"] = HttpClient(proxy=config.proxy)
+    
+    # Enter the context manager manually for app lifecycle
+    await app["http_client"].__aenter__()
+    
+    # Ensure image directory exists
+    config.image_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("Application state initialized.")
+
+async def cleanup_app_state(app: web.Application):
+    if "http_client" in app:
+        await app["http_client"].__aexit__(None, None, None)
+        logger.info("HTTP Client context closed.")
+
 def create_app() -> web.Application:
-    # 增加 client_max_size 到 50MB 避免大圖上傳時發生 413/400 錯誤
     app = web.Application(client_max_size=1024 * 1024 * 50)
     
-    # 確保圖片輸出資料夾存在，並註冊為靜態路由
-    DEFAULT_IMAGE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    app.router.add_static("/images", DEFAULT_IMAGE_OUTPUT_DIR)
+    app.on_startup.append(init_app_state)
+    app.on_cleanup.append(cleanup_app_state)
+    
+    config = AppConfig.from_env()
+    app.router.add_static("/images", config.image_output_dir)
     
     app.router.add_get("/health", health)
     app.router.add_post("/chat", chat)
@@ -223,7 +254,9 @@ async def _serve(*, host: str, port: int) -> None:
     await runner.setup()
     site = web.TCPSite(runner, host=host, port=port)
     await site.start()
-    print(f"[server] listening on http://{host}:{port}")
+    
+    logging.getLogger("gemini_flow.server").info(f"Listening on http://{host}:{port}")
+    
     try:
         while True:
             await asyncio.sleep(3600)
@@ -234,7 +267,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description="gemini_flow HTTP server")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = p.parse_args()
+    
+    if args.debug:
+        os.environ["DEBUG"] = "1"
+        
     asyncio.run(_serve(host=args.host, port=args.port))
 
 if __name__ == "__main__":

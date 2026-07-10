@@ -56,3 +56,24 @@ MODEL_HEADERS = {
         "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3,2,"{ext_uuid}"]'
     },
 }
+
+import os
+from dataclasses import dataclass
+
+@dataclass
+class AppConfig:
+    debug: bool = False
+    cookies_dir: Path = DEFAULT_COOKIES_DIR
+    sessions_dir: Path = DEFAULT_SESSIONS_DIR
+    image_output_dir: Path = DEFAULT_IMAGE_OUTPUT_DIR
+    proxy: str | None = None
+
+    @classmethod
+    def from_env(cls) -> AppConfig:
+        return cls(
+            debug=os.getenv("DEBUG", "false").lower() in ("true", "1", "yes", "t"),
+            cookies_dir=Path(os.getenv("COOKIES_DIR", str(DEFAULT_COOKIES_DIR))),
+            sessions_dir=Path(os.getenv("SESSIONS_DIR", str(DEFAULT_SESSIONS_DIR))),
+            image_output_dir=Path(os.getenv("IMAGE_OUTPUT_DIR", str(DEFAULT_IMAGE_OUTPUT_DIR))),
+            proxy=os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
+        )

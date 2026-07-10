@@ -13,10 +13,7 @@ class ChatRequest(BaseModel):
     language: str = "zh-TW"
     images: List[ImagePayload] = Field(default_factory=list)
     session_id: Optional[str] = None
-    proxy: Optional[str] = None
-    debug: bool = False
     auto_refresh_cookies: bool = True
-    save_images: bool = True
 
 class SessionData(BaseModel):
     session_id: str
@@ -24,8 +21,8 @@ class SessionData(BaseModel):
 
 class ChatResponseChunk(BaseModel):
     text: Optional[str] = None
-    image_saved_path: Optional[str] = None
     image_url: Optional[str] = None
+    image_local_path: Optional[str] = None
     session_ids: Optional[List[str]] = None
 
 class GeminiTokens(BaseModel):
