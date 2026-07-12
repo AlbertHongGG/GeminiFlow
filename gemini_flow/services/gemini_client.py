@@ -138,6 +138,17 @@ class GeminiClient:
         if img_url:
             logger.info(f"Image generation detected: {img_url}")
             
+            if "googleusercontent.com" in img_url:
+                import re
+                parts = img_url.split("?", 1)
+                base = parts[0]
+                if "=" in base:
+                    base = re.sub(r'=[^=]*$', '=s0-d', base)
+                else:
+                    base += "=s0-d"
+                img_url = base + ("?" + parts[1] if len(parts) > 1 else "")
+                logger.info(f"Upgraded to full-size URL: {img_url}")
+            
             if final_image_candidate:
                 try:
                     local_path = await self.image_handler.download_image(img_url, request.model)
