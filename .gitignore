@@ -38,3 +38,8 @@ htmlcov/
 !/user_cookies/.gitkeep
 package_ex/
 .runtime/
+
+# PyInstaller
+dist/
+build/
+*.spec

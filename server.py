@@ -265,7 +265,7 @@ async def _serve(*, host: str, port: int) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description="gemini_flow HTTP server")
     p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--port", type=int, default=5000)
     p.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = p.parse_args()
     

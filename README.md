@@ -36,7 +36,7 @@ cp .env.example .env
 
 ---
 
-## 💻 CLI 終端機模式 (CLI Usage)
+## CLI 終端機模式 (CLI Usage)
 
 CLI 模式適合用來快速測試與終端機對話。
 
@@ -63,36 +63,49 @@ uv run python cli.py chat "測試" --debug
 
 ---
 
-## 🌐 Server 伺服器模式 (Server Usage)
+## Server 伺服器模式 (Server Usage)
 
 Server 模式可以將 GeminiFlow 變成一個對外提供 RESTful API 的服務，並且**會自動處理所有生成的圖片下載與對外連結轉換**。
 
 ### 啟動伺服器
 ```bash
-# 啟動並聆聽在 8080 port
-uv run python server.py --host 127.0.0.1 --port 8080 --debug
+# 啟動並聆聽在 5000 port
+uv run python server.py --host 127.0.0.1 --port 5000 --debug
 ```
 
 ### API 請求範例 (HTTP POST)
 
 **一般對話 (包含 Session Id 以延續歷史對話)：**
 ```bash
-curl -X POST http://127.0.0.1:8080/chat \
+curl -X POST http://127.0.0.1:5000/chat \
     -H "Content-Type: application/json" \
     -d '{"prompt":"記住我的名字是小明", "model":"gemini-3-pro", "session_id": "test_01"}'
 ```
 
 **文字串流對話 (SSE Stream)：**
 ```bash
-curl -N -X POST http://127.0.0.1:8080/stream \
+curl -N -X POST http://127.0.0.1:5000/stream \
     -H "Content-Type: application/json" \
     -d '{"prompt":"寫一首長詩", "model":"gemini-3-pro"}'
 ```
 
 **圖片生成測試：**
 ```bash
-curl -X POST http://127.0.0.1:8080/chat \
+curl -X POST http://127.0.0.1:5000/chat \
     -H "Content-Type: application/json" \
     -d '{"prompt":"畫一隻可愛的貓咪", "model":"gemini-3-pro-image-preview"}'
 ```
-*(伺服器會自動下載生成的貓咪圖片，並回傳類似 `http://127.0.0.1:8080/images/gemini_...png` 的合法本地連結供外部存取。)*
+*(伺服器會自動下載生成的貓咪圖片，並回傳類似 `http://127.0.0.1:5000/images/gemini_...png` 的合法本地連結供外部存取。)*
+
+---
+
+## 打包為執行檔 (Packaging)
+
+若需要將伺服器打包為獨立的執行檔 (`.exe`)，可以透過 PyInstaller 進行打包：
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile server.py
+```
+
+打包完成後，執行檔將會輸出於 `dist/server.exe`。您可以直接執行該檔案，預設將運行在 `127.0.0.1:5000`。
