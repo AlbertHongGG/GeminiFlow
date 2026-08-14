@@ -259,6 +259,7 @@ def create_app() -> web.Application:
     app.on_cleanup.append(cleanup_app_state)
     
     config = AppConfig.from_env()
+    config.image_output_dir.mkdir(parents=True, exist_ok=True)
     app.router.add_static("/images", config.image_output_dir)
     
     app.router.add_get("/health", health)

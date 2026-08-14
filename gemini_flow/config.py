@@ -52,6 +52,18 @@ MODEL_HEADERS = {
     "gemini-3.5-flash": {
         "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
     },
+    "gemini-3.6-flash": {
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
+    },
+    "gemini-3.6-flash-thinking": {
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,2,"{ext_uuid}"]'
+    },
+    "gemini-3.7-flash": {
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
+    },
+    "gemini-3.7-flash-thinking": {
+        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,2,"{ext_uuid}"]'
+    },
     "gemini-3-pro-image-preview": {
         "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3,2,"{ext_uuid}"]'
     },
@@ -70,10 +82,18 @@ class AppConfig:
 
     @classmethod
     def from_env(cls) -> AppConfig:
+        env_file = Path(".env")
+        if env_file.is_file():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+
         return cls(
             debug=os.getenv("DEBUG", "false").lower() in ("true", "1", "yes", "t"),
-            cookies_dir=Path(os.getenv("COOKIES_DIR", str(DEFAULT_COOKIES_DIR))),
-            sessions_dir=Path(os.getenv("SESSIONS_DIR", str(DEFAULT_SESSIONS_DIR))),
-            image_output_dir=Path(os.getenv("IMAGE_OUTPUT_DIR", str(DEFAULT_IMAGE_OUTPUT_DIR))),
+            cookies_dir=Path(os.getenv("COOKIES_DIR", str(DEFAULT_COOKIES_DIR))).absolute(),
+            sessions_dir=Path(os.getenv("SESSIONS_DIR", str(DEFAULT_SESSIONS_DIR))).absolute(),
+            image_output_dir=Path(os.getenv("IMAGE_OUTPUT_DIR", str(DEFAULT_IMAGE_OUTPUT_DIR))).absolute(),
             proxy=os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
         )
