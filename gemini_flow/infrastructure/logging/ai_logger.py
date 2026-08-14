@@ -3,14 +3,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from ..models import ChatRequest
+from gemini_flow.domain.entities import ChatRequest
 
 class AILogger:
     def __init__(self, runtime_dir: Optional[Path] = None):
         if runtime_dir is None:
             # Default to .runtime in project root
-            # Path(__file__).parent is infra, parent is gemini_flow, parent is project root
-            project_root = Path(__file__).resolve().parent.parent.parent
+            # Path(__file__).parent is logging, parent is infrastructure, parent is gemini_flow, parent is project root
+            project_root = Path(__file__).resolve().parent.parent.parent.parent
             self.runtime_dir = project_root / ".runtime"
         else:
             self.runtime_dir = runtime_dir

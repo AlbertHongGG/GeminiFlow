@@ -1,6 +1,6 @@
 import logging
 import sys
-from ..config import AppConfig
+from gemini_flow.config import AppConfig
 
 def setup_logging(config: AppConfig) -> None:
     level = logging.DEBUG if config.debug else logging.INFO

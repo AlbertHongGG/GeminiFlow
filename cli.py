@@ -6,11 +6,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gemini_flow.models import ChatRequest, ImagePayload
-from gemini_flow.services.gemini_client import GeminiClient
+from gemini_flow.domain.entities import ChatRequest, ImagePayload
+from gemini_flow.application.chat_service import ChatService
 from gemini_flow.config import AppConfig
-from gemini_flow.infra.logger import setup_logging
-from gemini_flow.infra.http_client import HttpClient
+from gemini_flow.infrastructure.logging.logger import setup_logging
+from gemini_flow.infrastructure.clients.http_client import HttpClient
+from gemini_flow.infrastructure.clients.gemini_api.api_client import GeminiAPIClient
+from gemini_flow.infrastructure.auth.playwright_auth import PlaywrightAuthService
+from gemini_flow.infrastructure.storage.file_cookie_store import FileCookieStore
+from gemini_flow.infrastructure.storage.file_session_store import FileSessionStore
+from gemini_flow.infrastructure.clients.playwright_downloader import PlaywrightImageDownloader
 
 logger = logging.getLogger("gemini_flow.cli")
 
@@ -58,11 +63,23 @@ async def _run_chat(args: argparse.Namespace) -> int:
             system_prompt=args.system_prompt
         )
         
-        from gemini_flow.infra.ai_logger import AILogger
+        from gemini_flow.infrastructure.logging.ai_logger import AILogger
         ai_logger = AILogger()
         
         async with HttpClient(proxy=config.proxy) as http_client:
-            client = GeminiClient(config=config, http_client=http_client)
+            cookie_store = FileCookieStore(config.cookies_dir)
+            auth_service = PlaywrightAuthService(config.cookies_dir, cookie_store, http_client)
+            chat_provider = GeminiAPIClient(http_client)
+            session_store = FileSessionStore(config.sessions_dir)
+            image_downloader = PlaywrightImageDownloader(config.image_output_dir, cookie_store)
+            
+            client = ChatService(
+                auth_service=auth_service,
+                chat_provider=chat_provider,
+                session_store=session_store,
+                http_client=http_client,
+                image_downloader=image_downloader
+            )
             
             had_output = False
             full_text = []

@@ -1,7 +1,8 @@
 import json
+import re
 from typing import Any, Iterator, Optional, Sequence, Tuple, List
 
-class ResponseParser:
+class StreamParser:
     def __init__(self):
         self.last_content = ""
 
@@ -41,9 +42,6 @@ class ResponseParser:
         return None
 
     def extract_text_delta(self, raw_line: str) -> Tuple[Optional[str], Optional[List[str]]]:
-        """Extract incremental text delta and conversation IDs from one StreamGenerate response line.
-        Returns (delta, ids).
-        """
         try:
             line = json.loads(raw_line)
         except Exception:
@@ -87,7 +85,6 @@ class ResponseParser:
         return content, ids
 
     def extract_image_candidates(self, raw_line: str) -> Sequence[str]:
-        """Extract image candidates (URLs or data URLs) from one StreamGenerate raw line."""
         def _walk_strings(value: Any) -> Iterator[str]:
             if isinstance(value, str):
                 yield value
@@ -100,7 +97,6 @@ class ResponseParser:
                 for item in value.values():
                     yield from _walk_strings(item)
 
-        import re
         url_regex = re.compile(r'(https?://(?:googleusercontent\.com|gstatic\.com|content-push\.googleapis\.com|lh3\.googleusercontent\.com)[^\s"\'\\]+)')
         
         def _extract_urls_from_text(text: str) -> Iterator[str]:
@@ -136,11 +132,6 @@ class ResponseParser:
         return out
 
     def classify_image_url(self, url: str) -> Optional[str]:
-        """
-        Classifies an image URL as either a 'placeholder' or 'output'.
-        Returns 'placeholder', 'output', or None if neither.
-        """
-        import re
         _CONTROL_RE = re.compile(r"[\x00-\x1F\x7F\u200B\u200C\u200D\uFEFF]")
         norm = _CONTROL_RE.sub("", url.strip())
         if not norm:

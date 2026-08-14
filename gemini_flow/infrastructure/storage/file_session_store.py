@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import Optional, List
-from ..models import SessionData
-from ..config import DEFAULT_SESSIONS_DIR
+from typing import Optional
+from gemini_flow.domain.entities import SessionData
+from gemini_flow.domain.interfaces import ISessionStore
 
-class SessionManager:
-    def __init__(self, storage_dir: Path = DEFAULT_SESSIONS_DIR):
+class FileSessionStore(ISessionStore):
+    def __init__(self, storage_dir: Path):
         self.storage_dir = storage_dir
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -25,6 +25,6 @@ class SessionManager:
             pass
         return None
 
-    def save(self, session_data: SessionData) -> None:
-        path = self._get_path(session_data.session_id)
-        path.write_text(json.dumps(session_data.conversation_ids, ensure_ascii=False), encoding="utf-8")
+    def save(self, data: SessionData) -> None:
+        path = self._get_path(data.session_id)
+        path.write_text(json.dumps(data.conversation_ids, ensure_ascii=False), encoding="utf-8")

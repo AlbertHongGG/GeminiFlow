@@ -1,8 +1,8 @@
-from .services.gemini_client import GeminiClient
-from .models import ChatRequest, ImagePayload
+from .application.chat_service import ChatService
+from .domain.entities import ChatRequest, ImagePayload
 
 __all__ = [
-    "GeminiClient",
+    "ChatService",
     "ChatRequest",
     "ImagePayload"
 ]

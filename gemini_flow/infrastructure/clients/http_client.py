@@ -1,7 +1,8 @@
 import aiohttp
 import logging
 from typing import Optional, Dict, Any, AsyncGenerator
-from ..exceptions import NetworkError
+from gemini_flow.config import DEFAULT_HTTP_HEADERS
+from gemini_flow.domain.exceptions import NetworkError
 
 logger = logging.getLogger("gemini_flow.http_client")
 
@@ -22,7 +23,9 @@ class HttpClient:
     async def __aenter__(self):
         self._session = aiohttp.ClientSession(
             headers=self.default_headers,
-            cookies=self.default_cookies
+            cookies=self.default_cookies,
+            max_line_size=65536,
+            max_field_size=65536
         )
         logger.debug("HttpClient session opened.")
         return self
@@ -39,7 +42,16 @@ class HttpClient:
         return self._session
 
     def update_cookies(self, cookies: Dict[str, str]):
-        self._get_session().cookie_jar.update_cookies(cookies)
+        from yarl import URL
+        jar = self._get_session().cookie_jar
+        for name, value in cookies.items():
+            jar.update_cookies({name: value}, response_url=URL("https://google.com"))
+        
+        # Ensure all cookies in the jar apply to all .google.com subdomains
+        # (Needed because image downloads redirect to work.fife.usercontent.google.com)
+        for cookie in jar:
+            if cookie["domain"] == "google.com":
+                cookie["domain"] = ".google.com"
 
     async def get_text(self, url: str, headers: Optional[Dict[str, str]] = None) -> str:
         logger.debug(f"GET {url}")
@@ -58,6 +70,9 @@ class HttpClient:
             async with self._get_session().post(url, params=params, data=data, headers=headers, proxy=self.proxy) as resp:
                 if resp.status >= 400:
                     body = await resp.text()
+                    if resp.status in (401, 403):
+                        from gemini_flow.domain.exceptions import TokenExpiredError
+                        raise TokenExpiredError(f"Token expired or unauthorized: HTTP {resp.status} body={body[:100]}")
                     raise NetworkError(f"POST {url} failed: HTTP {resp.status} body={body[:300]}")
                 
                 async for chunk in resp.content.iter_any():
@@ -66,29 +81,6 @@ class HttpClient:
             logger.error(f"POST STREAM {url} failed: {e}")
             raise NetworkError(f"Network streaming request failed: {e}") from e
     
-    async def post_json(self, url: str, json_data: Any, headers: Optional[Dict[str, str]] = None) -> Any:
-        logger.debug(f"POST JSON {url}")
-        try:
-            async with self._get_session().post(url, json=json_data, headers=headers, proxy=self.proxy) as resp:
-                if resp.status >= 400:
-                    body = await resp.text()
-                    raise NetworkError(f"POST {url} failed: HTTP {resp.status} body={body[:300]}")
-                return await resp.json()
-        except aiohttp.ClientError as e:
-            logger.error(f"POST JSON {url} failed: {e}")
-            raise NetworkError(f"Network request failed: {e}") from e
-
-    async def download_file(self, url: str) -> bytes:
-        logger.debug(f"DOWNLOAD {url}")
-        try:
-            async with self._get_session().get(url, proxy=self.proxy) as resp:
-                if resp.status >= 400:
-                    raise NetworkError(f"Download {url} failed: HTTP {resp.status}")
-                return await resp.read()
-        except aiohttp.ClientError as e:
-            logger.error(f"DOWNLOAD {url} failed: {e}")
-            raise NetworkError(f"Network request failed: {e}") from e
-
     async def post_form(self, url: str, data: Any, headers: Optional[Dict[str, str]] = None) -> aiohttp.ClientResponse:
         logger.debug(f"POST FORM {url}")
         try:
