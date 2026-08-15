@@ -26,7 +26,7 @@ class PlaywrightImageDownloader(IImageDownloader):
                 logger.warning(f"Failed to load playwright cookies for download: {e}")
                 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=True, channel="chrome")
             context = await browser.new_context()
             if pw_cookies:
                 await context.add_cookies(pw_cookies)
