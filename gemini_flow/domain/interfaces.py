@@ -1,5 +1,5 @@
 import abc
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Optional, Any
 from pathlib import Path
 from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens
 
@@ -52,4 +52,30 @@ class IImageDownloader(abc.ABC):
         Downloads an image from the given URL and saves it locally.
         Returns the Path to the saved image.
         """
+        pass
+
+class IWebBrowser(abc.ABC):
+    @abc.abstractmethod
+    async def start(self) -> None:
+        """Starts the browser provider and initializes resources."""
+        pass
+        
+    @abc.abstractmethod
+    async def stop(self) -> None:
+        """Stops the browser provider and cleans up resources."""
+        pass
+        
+    @abc.abstractmethod
+    async def navigate_and_get_html(self, url: str, wait_selector: str, timeout: int = 5000) -> str:
+        """Navigates to URL, waits for a selector, and returns HTML."""
+        pass
+        
+    @abc.abstractmethod
+    async def get_cookies(self) -> list[dict]:
+        """Returns all browser cookies."""
+        pass
+        
+    @abc.abstractmethod
+    async def download_file(self, url: str, dest_path: Path) -> Path:
+        """Downloads a file using the browser's context/cookies and saves it to dest_path."""
         pass

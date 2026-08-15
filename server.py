@@ -18,10 +18,11 @@ from gemini_flow.config import AppConfig
 from gemini_flow.infrastructure.logging.logger import setup_logging
 from gemini_flow.infrastructure.clients.http_client import HttpClient
 from gemini_flow.infrastructure.clients.gemini_api.api_client import GeminiAPIClient
-from gemini_flow.infrastructure.auth.playwright_auth import PlaywrightAuthService
+from gemini_flow.infrastructure.auth.gemini_auth import GeminiAuthService
 from gemini_flow.infrastructure.storage.file_cookie_store import FileCookieStore
 from gemini_flow.infrastructure.storage.file_session_store import FileSessionStore
-from gemini_flow.infrastructure.clients.playwright_downloader import PlaywrightImageDownloader
+from gemini_flow.infrastructure.clients.gemini_downloader import GeminiImageDownloader
+from gemini_flow.infrastructure.browser.playwright_browser import PlaywrightWebBrowser
 
 logger = logging.getLogger("gemini_flow.server")
 
@@ -106,12 +107,13 @@ async def chat(request: web.Request) -> web.Response:
 
     config = request.app["config"]
     http_client = request.app["http_client"]
+    browser_provider = request.app["browser_provider"]
     
     cookie_store = FileCookieStore(config.cookies_dir)
-    auth_service = PlaywrightAuthService(config.cookies_dir, cookie_store, http_client)
+    auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
     chat_provider = GeminiAPIClient(http_client)
     session_store = FileSessionStore(config.sessions_dir)
-    image_downloader = PlaywrightImageDownloader(config.image_output_dir, cookie_store)
+    image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
     
     client = ChatService(
         auth_service=auth_service,
@@ -178,12 +180,13 @@ async def stream(request: web.Request) -> web.StreamResponse:
     
     config = request.app["config"]
     http_client = request.app["http_client"]
+    browser_provider = request.app["browser_provider"]
     
     cookie_store = FileCookieStore(config.cookies_dir)
-    auth_service = PlaywrightAuthService(config.cookies_dir, cookie_store, http_client)
+    auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
     chat_provider = GeminiAPIClient(http_client)
     session_store = FileSessionStore(config.sessions_dir)
-    image_downloader = PlaywrightImageDownloader(config.image_output_dir, cookie_store)
+    image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
     
     client = ChatService(
         auth_service=auth_service,
@@ -238,9 +241,11 @@ async def init_app_state(app: web.Application):
     # Store config and create http client context
     app["config"] = config
     app["http_client"] = HttpClient(proxy=config.proxy)
+    app["browser_provider"] = PlaywrightWebBrowser(config.cookies_dir / ".pw-profile", browser_channel="chrome", headless=True)
     
     # Enter the context manager manually for app lifecycle
     await app["http_client"].__aenter__()
+    await app["browser_provider"].start()
     
     # Ensure image directory exists
     config.image_output_dir.mkdir(parents=True, exist_ok=True)
@@ -248,6 +253,9 @@ async def init_app_state(app: web.Application):
     logger.info("Application state initialized.")
 
 async def cleanup_app_state(app: web.Application):
+    if "browser_provider" in app:
+        await app["browser_provider"].stop()
+        logger.info("Browser provider stopped.")
     if "http_client" in app:
         await app["http_client"].__aexit__(None, None, None)
         logger.info("HTTP Client context closed.")

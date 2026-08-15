@@ -12,10 +12,11 @@ from gemini_flow.config import AppConfig
 from gemini_flow.infrastructure.logging.logger import setup_logging
 from gemini_flow.infrastructure.clients.http_client import HttpClient
 from gemini_flow.infrastructure.clients.gemini_api.api_client import GeminiAPIClient
-from gemini_flow.infrastructure.auth.playwright_auth import PlaywrightAuthService
+from gemini_flow.infrastructure.auth.gemini_auth import GeminiAuthService
 from gemini_flow.infrastructure.storage.file_cookie_store import FileCookieStore
 from gemini_flow.infrastructure.storage.file_session_store import FileSessionStore
-from gemini_flow.infrastructure.clients.playwright_downloader import PlaywrightImageDownloader
+from gemini_flow.infrastructure.clients.gemini_downloader import GeminiImageDownloader
+from gemini_flow.infrastructure.browser.playwright_browser import PlaywrightWebBrowser
 
 logger = logging.getLogger("gemini_flow.cli")
 
@@ -67,11 +68,15 @@ async def _run_chat(args: argparse.Namespace) -> int:
         ai_logger = AILogger()
         
         async with HttpClient(proxy=config.proxy) as http_client:
-            cookie_store = FileCookieStore(config.cookies_dir)
-            auth_service = PlaywrightAuthService(config.cookies_dir, cookie_store, http_client)
-            chat_provider = GeminiAPIClient(http_client)
-            session_store = FileSessionStore(config.sessions_dir)
-            image_downloader = PlaywrightImageDownloader(config.image_output_dir, cookie_store)
+            browser_provider = PlaywrightWebBrowser(config.cookies_dir / ".pw-profile", browser_channel="chrome", headless=True)
+            await browser_provider.start()
+            
+            try:
+                cookie_store = FileCookieStore(config.cookies_dir)
+                auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
+                chat_provider = GeminiAPIClient(http_client)
+                session_store = FileSessionStore(config.sessions_dir)
+                image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
             
             client = ChatService(
                 auth_service=auth_service,
@@ -103,6 +108,8 @@ async def _run_chat(args: argparse.Namespace) -> int:
             
             if config.debug and not had_output:
                 logger.debug("No text chunks were output.")
+            finally:
+                await browser_provider.stop()
         return 0
     except Exception as e:
         logger.error(f"ERROR: {e}")
