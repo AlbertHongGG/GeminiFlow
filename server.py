@@ -4,7 +4,7 @@ import json
 import base64
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 import os
 
 import aiohttp_cors
@@ -25,6 +25,11 @@ from gemini_flow.infrastructure.clients.gemini_downloader import GeminiImageDown
 from gemini_flow.infrastructure.browser.playwright_browser import PlaywrightWebBrowser
 
 logger = logging.getLogger("gemini_flow.server")
+
+CONFIG_KEY = web.AppKey("config", AppConfig)
+CHAT_SERVICE_KEY = web.AppKey("chat_service", ChatService)
+HTTP_CLIENT_KEY = web.AppKey("http_client", HttpClient)
+BROWSER_KEY = web.AppKey("browser_provider", PlaywrightWebBrowser)
 
 def _json_dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False)
@@ -90,6 +95,28 @@ async def _read_chat_request(request: web.Request) -> ChatRequest:
     except Exception as e:
         raise Exception(f"Failed to read request: {e}")
 
+def _get_chat_service(request: web.Request) -> ChatService:
+    if CHAT_SERVICE_KEY in request.app:
+        return request.app[CHAT_SERVICE_KEY]
+
+    config = request.app[CONFIG_KEY]
+    http_client = request.app[HTTP_CLIENT_KEY]
+    browser_provider = request.app[BROWSER_KEY]
+    
+    cookie_store = FileCookieStore(config.cookies_dir)
+    auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
+    chat_provider = GeminiAPIClient(http_client)
+    session_store = FileSessionStore(config.sessions_dir)
+    image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
+    
+    return ChatService(
+        auth_service=auth_service,
+        chat_provider=chat_provider,
+        session_store=session_store,
+        http_client=http_client,
+        image_downloader=image_downloader,
+    )
+
 async def health(_: web.Request) -> web.Response:
     return web.json_response({"ok": True}, dumps=_json_dumps)
 
@@ -106,23 +133,7 @@ async def chat(request: web.Request) -> web.Response:
     from gemini_flow.infrastructure.logging.ai_logger import AILogger
     ai_logger = AILogger()
 
-    config = request.app["config"]
-    http_client = request.app["http_client"]
-    browser_provider = request.app["browser_provider"]
-    
-    cookie_store = FileCookieStore(config.cookies_dir)
-    auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
-    chat_provider = GeminiAPIClient(http_client)
-    session_store = FileSessionStore(config.sessions_dir)
-    image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
-    
-    client = ChatService(
-        auth_service=auth_service,
-        chat_provider=chat_provider,
-        session_store=session_store,
-        http_client=http_client,
-        image_downloader=image_downloader
-    )
+    client = _get_chat_service(request)
     
     text_parts = []
     images_saved = []
@@ -179,27 +190,11 @@ async def stream(request: web.Request) -> web.StreamResponse:
     from gemini_flow.infrastructure.logging.ai_logger import AILogger
     ai_logger = AILogger()
     
-    config = request.app["config"]
-    http_client = request.app["http_client"]
-    browser_provider = request.app["browser_provider"]
-    
-    cookie_store = FileCookieStore(config.cookies_dir)
-    auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
-    chat_provider = GeminiAPIClient(http_client)
-    session_store = FileSessionStore(config.sessions_dir)
-    image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
-    
-    client = ChatService(
-        auth_service=auth_service,
-        chat_provider=chat_provider,
-        session_store=session_store,
-        http_client=http_client,
-        image_downloader=image_downloader
-    )
+    client = _get_chat_service(request)
     
     full_text = []
     response_images = []
-    
+
     try:
         async for chunk in client.stream_chat(chat_req):
             if chunk.text:
@@ -240,13 +235,13 @@ async def init_app_state(app: web.Application):
     setup_logging(config)
     
     # Store config and create http client context
-    app["config"] = config
-    app["http_client"] = HttpClient(proxy=config.proxy)
-    app["browser_provider"] = PlaywrightWebBrowser(config.cookies_dir / ".pw-profile", browser_channel="chrome", headless=True)
+    app[CONFIG_KEY] = config
+    app[HTTP_CLIENT_KEY] = HttpClient(proxy=config.proxy)
+    app[BROWSER_KEY] = PlaywrightWebBrowser(config.cookies_dir / ".pw-profile", browser_channel="chrome", headless=True)
     
     # Enter the context manager manually for app lifecycle
-    await app["http_client"].__aenter__()
-    await app["browser_provider"].start()
+    await app[HTTP_CLIENT_KEY].__aenter__()
+    await app[BROWSER_KEY].start()
     
     # Ensure image directory exists
     config.image_output_dir.mkdir(parents=True, exist_ok=True)
@@ -254,21 +249,26 @@ async def init_app_state(app: web.Application):
     logger.info("Application state initialized.")
 
 async def cleanup_app_state(app: web.Application):
-    if "browser_provider" in app:
-        await app["browser_provider"].stop()
+    if BROWSER_KEY in app:
+        await app[BROWSER_KEY].stop()
         logger.info("Browser provider stopped.")
-    if "http_client" in app:
-        await app["http_client"].__aexit__(None, None, None)
+    if HTTP_CLIENT_KEY in app:
+        await app[HTTP_CLIENT_KEY].__aexit__(None, None, None)
         logger.info("HTTP Client context closed.")
 
-def create_app() -> web.Application:
+def create_app(chat_service: Optional[ChatService] = None) -> web.Application:
     app = web.Application(client_max_size=1024 * 1024 * 50)
-    
-    app.on_startup.append(init_app_state)
-    app.on_cleanup.append(cleanup_app_state)
     
     config = AppConfig.from_env()
     config.image_output_dir.mkdir(parents=True, exist_ok=True)
+    app[CONFIG_KEY] = config
+
+    if chat_service is not None:
+        app[CHAT_SERVICE_KEY] = chat_service
+    else:
+        app.on_startup.append(init_app_state)
+        app.on_cleanup.append(cleanup_app_state)
+    
     app.router.add_static("/images", config.image_output_dir)
     
     app.router.add_get("/health", health)

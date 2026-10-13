@@ -3,6 +3,7 @@ import asyncio
 import sys
 import logging
 from pathlib import Path
+from typing import Optional, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -49,7 +50,31 @@ def _build_parser() -> argparse.ArgumentParser:
 
     return p
 
-async def _run_chat(args: argparse.Namespace) -> int:
+async def _consume_stream(client: ChatService, req: ChatRequest, ai_logger, debug: bool = False):
+    had_output = False
+    full_text = []
+    response_images = []
+    
+    async for chunk in client.stream_chat(req):
+        if chunk.text:
+            had_output = True
+            full_text.append(chunk.text)
+            print(chunk.text, end="", flush=True)
+        if chunk.image_local_path:
+            response_images.append(chunk.image_local_path)
+            print(f"\n[Image downloaded to: {chunk.image_local_path}]")
+        elif chunk.image_url:
+            response_images.append(chunk.image_url)
+            print(f"\n[Image URL: {chunk.image_url}]")
+    print()
+    
+    # Log the complete interaction
+    ai_logger.log_interaction(req, "".join(full_text), response_images)
+    
+    if debug and not had_output:
+        logger.debug("No text chunks were output.")
+
+async def _run_chat(args: argparse.Namespace, chat_service: Optional[ChatService] = None) -> int:
     config = AppConfig.from_env()
     if args.debug:
         config.debug = True
@@ -74,6 +99,10 @@ async def _run_chat(args: argparse.Namespace) -> int:
         
         from gemini_flow.infrastructure.logging.ai_logger import AILogger
         ai_logger = AILogger()
+
+        if chat_service is not None:
+            await _consume_stream(chat_service, req, ai_logger, config.debug)
+            return 0
         
         async with HttpClient(proxy=config.proxy) as http_client:
             browser_provider = PlaywrightWebBrowser(config.cookies_dir / ".pw-profile", browser_channel="chrome", headless=True)
@@ -94,28 +123,7 @@ async def _run_chat(args: argparse.Namespace) -> int:
                     image_downloader=image_downloader
                 )
                 
-                had_output = False
-                full_text = []
-                response_images = []
-                
-                async for chunk in client.stream_chat(req):
-                    if chunk.text:
-                        had_output = True
-                        full_text.append(chunk.text)
-                        print(chunk.text, end="", flush=True)
-                    if chunk.image_local_path:
-                        response_images.append(chunk.image_local_path)
-                        print(f"\n[Image downloaded to: {chunk.image_local_path}]")
-                    elif chunk.image_url:
-                        response_images.append(chunk.image_url)
-                        print(f"\n[Image URL: {chunk.image_url}]")
-                print()
-                
-                # Log the complete interaction
-                ai_logger.log_interaction(req, "".join(full_text), response_images)
-                
-                if config.debug and not had_output:
-                    logger.debug("No text chunks were output.")
+                await _consume_stream(client, req, ai_logger, config.debug)
             finally:
                 await browser_provider.stop()
         return 0
@@ -123,11 +131,17 @@ async def _run_chat(args: argparse.Namespace) -> int:
         logger.error(f"ERROR: {e}")
         return 1
 
-def main() -> None:
-    args = _build_parser().parse_args()
+def main(args_list: Optional[List[str]] = None, chat_service: Optional[ChatService] = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(args_list)
     if args.cmd == "chat":
-        raise SystemExit(asyncio.run(_run_chat(args)))
-    raise SystemExit(2)
+        ret = asyncio.run(_run_chat(args, chat_service=chat_service))
+        if args_list is None:
+            raise SystemExit(ret)
+        return ret
+    if args_list is None:
+        raise SystemExit(2)
+    return 2
 
 if __name__ == "__main__":
     main()
