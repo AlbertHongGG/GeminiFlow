@@ -7,7 +7,7 @@ GEMINI_REQUEST_URL = "https://gemini.google.com/_/BardChatUi/data/assistant.lamd
 UPLOAD_IMAGE_URL = "https://content-push.googleapis.com/upload/"
 
 # Protocol constants
-REQUEST_BL_PARAM = "boq_assistant-bard-web-server_20260618.10_p0"
+REQUEST_BL_PARAM = "boq_gemini-web-uiserver_20261012.15_p0"
 REQUIRED_COOKIE_NAME = "__Secure-1PSID"
 GOOGLE_COOKIE_DOMAIN = ".google.com"
 
@@ -44,30 +44,6 @@ UPLOAD_IMAGE_HEADERS = {
     "x-tenant-id": "bard-storage",
 }
 
-# Model Settings
-MODEL_HEADERS = {
-    "gemini-3-pro": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3,1,"{ext_uuid}"]'
-    },
-    "gemini-3.5-flash": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
-    },
-    "gemini-3.6-flash": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
-    },
-    "gemini-3.6-flash-thinking": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,2,"{ext_uuid}"]'
-    },
-    "gemini-3.7-flash": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,1,"{ext_uuid}"]'
-    },
-    "gemini-3.7-flash-thinking": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"56fdd199312815e2",null,null,0,[4,5,6,8],null,null,2,null,null,1,2,"{ext_uuid}"]'
-    },
-    "gemini-3-pro-image-preview": {
-        "x-goog-ext-525001261-jspb": '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4,5,6,8],null,null,2,null,null,3,2,"{ext_uuid}"]'
-    },
-}
 
 import os
 from dataclasses import dataclass

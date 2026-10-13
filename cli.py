@@ -26,7 +26,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     chat = sub.add_parser("chat", help="Send a prompt and stream text output")
     chat.add_argument("prompt", help="User prompt")
-    chat.add_argument("-m", "--model", default="gemini-3-pro")
+    chat.add_argument("-m", "--model", default="gemini-3.8-flash", help="Model name (e.g. gemini-3.8-flash, gemini-3-pro)")
+    chat.add_argument(
+        "-t",
+        "--thinking",
+        choices=["low", "medium", "high"],
+        default=None,
+        help="Thinking mode level (low, medium, high)",
+    )
     chat.add_argument(
         "--image",
         action="append",
@@ -58,6 +65,7 @@ async def _run_chat(args: argparse.Namespace) -> int:
         req = ChatRequest(
             prompt=args.prompt,
             model=args.model,
+            thinking=args.thinking,
             language=args.lang,
             images=images,
             session_id=args.session_id,
@@ -78,36 +86,36 @@ async def _run_chat(args: argparse.Namespace) -> int:
                 session_store = FileSessionStore(config.sessions_dir)
                 image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
             
-            client = ChatService(
-                auth_service=auth_service,
-                chat_provider=chat_provider,
-                session_store=session_store,
-                http_client=http_client,
-                image_downloader=image_downloader
-            )
-            
-            had_output = False
-            full_text = []
-            response_images = []
-            
-            async for chunk in client.stream_chat(req):
-                if chunk.text:
-                    had_output = True
-                    full_text.append(chunk.text)
-                    print(chunk.text, end="", flush=True)
-                if chunk.image_local_path:
-                    response_images.append(chunk.image_local_path)
-                    print(f"\n[Image downloaded to: {chunk.image_local_path}]")
-                elif chunk.image_url:
-                    response_images.append(chunk.image_url)
-                    print(f"\n[Image URL: {chunk.image_url}]")
-            print()
-            
-            # Log the complete interaction
-            ai_logger.log_interaction(req, "".join(full_text), response_images)
-            
-            if config.debug and not had_output:
-                logger.debug("No text chunks were output.")
+                client = ChatService(
+                    auth_service=auth_service,
+                    chat_provider=chat_provider,
+                    session_store=session_store,
+                    http_client=http_client,
+                    image_downloader=image_downloader
+                )
+                
+                had_output = False
+                full_text = []
+                response_images = []
+                
+                async for chunk in client.stream_chat(req):
+                    if chunk.text:
+                        had_output = True
+                        full_text.append(chunk.text)
+                        print(chunk.text, end="", flush=True)
+                    if chunk.image_local_path:
+                        response_images.append(chunk.image_local_path)
+                        print(f"\n[Image downloaded to: {chunk.image_local_path}]")
+                    elif chunk.image_url:
+                        response_images.append(chunk.image_url)
+                        print(f"\n[Image URL: {chunk.image_url}]")
+                print()
+                
+                # Log the complete interaction
+                ai_logger.log_interaction(req, "".join(full_text), response_images)
+                
+                if config.debug and not had_output:
+                    logger.debug("No text chunks were output.")
             finally:
                 await browser_provider.stop()
         return 0

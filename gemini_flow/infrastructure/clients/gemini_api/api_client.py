@@ -3,16 +3,17 @@ from typing import AsyncGenerator, Optional, List, Tuple
 from gemini_flow.domain.interfaces import IChatProvider
 from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, ImagePayload
 from gemini_flow.domain.exceptions import NetworkError, ProtocolError
-from gemini_flow.config import UPLOAD_IMAGE_HEADERS, UPLOAD_IMAGE_URL, GEMINI_REQUEST_URL, REQUEST_BL_PARAM, MODEL_HEADERS
+from gemini_flow.config import UPLOAD_IMAGE_HEADERS, UPLOAD_IMAGE_URL, GEMINI_REQUEST_URL, REQUEST_BL_PARAM
 from ..http_client import HttpClient
-from .builders.model_builders import get_builder_for_model
+from .protocol import GeminiProtocolEngine
 from .parser import StreamParser
 
 logger = logging.getLogger("gemini_flow.api_client")
 
 class GeminiAPIClient(IChatProvider):
-    def __init__(self, http_client: HttpClient):
+    def __init__(self, http_client: HttpClient, server_bl: str = REQUEST_BL_PARAM):
         self.http_client = http_client
+        self.protocol_engine = GeminiProtocolEngine(server_bl=server_bl)
 
     async def upload_images(self, images: List[ImagePayload]) -> List[Tuple[str, str]]:
         uploads = []
@@ -52,10 +53,17 @@ class GeminiAPIClient(IChatProvider):
             logger.info(f"Uploading {len(request.images)} images...")
             uploads = await self.upload_images(request.images)
 
-        builder = get_builder_for_model(request, tokens, uploads, conversation_ids)
-        params = builder.build_params(REQUEST_BL_PARAM)
-        data = builder.build_payload(MODEL_HEADERS)
-        headers = builder.build_headers(MODEL_HEADERS)
+        turn_index = 1 if conversation_ids else 0
+        proto_req = self.protocol_engine.build_request(
+            request=request,
+            tokens=tokens,
+            uploads=uploads,
+            conversation_ids=conversation_ids,
+            turn_index=turn_index,
+        )
+        params = proto_req.params
+        headers = proto_req.headers
+        data = proto_req.data
 
         parser = StreamParser()
         emitted_session_ids = False
