@@ -39,10 +39,14 @@ class TestDomainModels(unittest.TestCase):
         self.assertEqual(spec.model_id, 3)
         self.assertEqual(spec.thinking_level, 2)
 
-        # Combined string parsing
-        spec_legacy = ModelSpec.resolve("gemini-3.6-flash-thinking")
-        self.assertEqual(spec_legacy.family, ModelFamily.FLASH)
-        self.assertEqual(spec_legacy.thinking, ThinkingLevel.HIGH)
+        # Test strict orthogonality: model name does NOT affect thinking level!
+        spec_unspecified = ModelSpec.resolve("gemini-3.6-flash-thinking")
+        self.assertEqual(spec_unspecified.family, ModelFamily.FLASH)
+        self.assertEqual(spec_unspecified.thinking, ThinkingLevel.LOW)
+
+        spec_explicit = ModelSpec.resolve("gemini-3.8-flash", thinking="high")
+        self.assertEqual(spec_explicit.family, ModelFamily.FLASH)
+        self.assertEqual(spec_explicit.thinking, ThinkingLevel.HIGH)
 
     def test_chat_request_integration(self):
         req = ChatRequest(prompt="Hello", model="gemini-3-pro", thinking="medium")

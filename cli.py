@@ -32,8 +32,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "-t",
         "--thinking",
         choices=["low", "medium", "high"],
-        default=None,
-        help="Thinking mode level (low, medium, high)",
+        default="low",
+        help="Thinking mode level (low, medium, high), default: low",
     )
     chat.add_argument(
         "--image",

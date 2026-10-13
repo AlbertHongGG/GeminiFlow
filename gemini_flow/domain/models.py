@@ -68,23 +68,10 @@ class ModelSpec(BaseModel):
         raw = (model_name or "gemini-3.8-flash").strip()
         lower = raw.lower()
 
-        # Determine family
+        # Determine family strictly from model identity
         family = ModelFamily.PRO if "pro" in lower else ModelFamily.FLASH
 
-        # Determine thinking level
-        if thinking is not None:
-            thinking_lvl = ThinkingLevel.from_value(thinking)
-        else:
-            if "thinking-medium" in lower or "think-medium" in lower:
-                thinking_lvl = ThinkingLevel.MEDIUM
-            elif "thinking-high" in lower or "think-high" in lower:
-                thinking_lvl = ThinkingLevel.HIGH
-            elif "thinking-low" in lower or "think-low" in lower:
-                thinking_lvl = ThinkingLevel.LOW
-            elif "thinking" in lower or "think" in lower:
-                # Default to HIGH when just "thinking" is specified (matches historical ON=2)
-                thinking_lvl = ThinkingLevel.HIGH
-            else:
-                thinking_lvl = ThinkingLevel.LOW
+        # Determine thinking level strictly from thinking parameter
+        thinking_lvl = ThinkingLevel.from_value(thinking)
 
         return cls(family=family, thinking=thinking_lvl, raw_name=raw)

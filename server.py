@@ -79,7 +79,7 @@ async def _read_chat_request(request: web.Request) -> ChatRequest:
             prompt=obj.get("prompt"),
             system_prompt=obj.get("system_prompt"),
             model=obj.get("model", "gemini-3.8-flash"),
-            thinking=obj.get("thinking"),
+            thinking=obj.get("thinking", "low"),
             language=obj.get("language", "zh-TW"),
             images=images,
             session_id=obj.get("session_id"),

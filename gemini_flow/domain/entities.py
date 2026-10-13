@@ -10,7 +10,7 @@ class ChatRequest(BaseModel):
     prompt: str
     system_prompt: Optional[str] = None
     model: str = "gemini-3.8-flash"
-    thinking: Optional[Union[ThinkingLevel, str, int]] = None
+    thinking: Union[ThinkingLevel, str, int] = ThinkingLevel.LOW
     language: str = "zh-TW"
     images: List[ImagePayload] = Field(default_factory=list)
     session_id: Optional[str] = None
