@@ -1,11 +1,10 @@
 from __future__ import annotations
 import uuid
 import random
-from typing import Dict, Sequence, Tuple, Optional, Any
+from typing import Dict, Sequence, Tuple, Optional
 from dataclasses import dataclass
 
-from gemini_flow.domain.entities import ChatRequest, GeminiTokens
-from gemini_flow.domain.models import ModelSpec
+from gemini_flow.domain.entities import ChatRequest, GeminiTokens, SessionData
 from .header_builder import JspbHeaderBuilder
 from .payload_builder import GeminiPayloadBuilder
 
@@ -29,9 +28,8 @@ class GeminiProtocolEngine:
         self,
         request: ChatRequest,
         tokens: GeminiTokens,
+        session_data: Optional[SessionData] = None,
         uploads: Optional[Sequence[Tuple[str, str]]] = None,
-        conversation_ids: Optional[Sequence[str]] = None,
-        turn_index: int = 0,
     ) -> ProtocolRequest:
         req_uuid = str(uuid.uuid4()).upper()
         model_spec = request.model_spec
@@ -55,6 +53,10 @@ class GeminiProtocolEngine:
         headers = header_builder.build_all_headers()
 
         # 3. Payload
+        turn_index = session_data.turn_index if session_data else 0
+        conversation_id = session_data.conversation_id if session_data else None
+        continuation_token = session_data.continuation_token if session_data else None
+
         payload_builder = GeminiPayloadBuilder(
             prompt=request.prompt,
             system_prompt=request.system_prompt,
@@ -62,7 +64,8 @@ class GeminiProtocolEngine:
             model_spec=model_spec,
             req_uuid=req_uuid,
             uploads=uploads,
-            conversation_ids=conversation_ids,
+            conversation_id=conversation_id,
+            continuation_token=continuation_token,
             turn_index=turn_index,
         )
         data = payload_builder.build_post_data(at_token=tokens.snlm0e)

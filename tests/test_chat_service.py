@@ -44,27 +44,39 @@ class TestChatService(unittest.IsolatedAsyncioTestCase):
         self.assertIn("哈囉！這是測試的第一段回答。", full_reply)
         self.assertIn("這是接續的第二段文字，回答完成！", full_reply)
 
-        # Verify session state was automatically persisted
+        # Verify session state was automatically persisted and advanced
         saved_session = self.session_store.load("session_abc")
         self.assertIsNotNone(saved_session)
-        self.assertEqual(saved_session.conversation_ids, ["c_fake_conv_123", "r_fake_resp_456", "rc_fake_choice_789"])
+        self.assertEqual(saved_session.conversation_id, "c_fake_conv_123")
+        self.assertEqual(saved_session.continuation_token, "AwAAAAAAAAAQANM7mFakeToken12345")
+        self.assertEqual(saved_session.turn_index, 1)
 
     async def test_text_to_text_multi_turn(self):
         """Scenario 1b: 多輪對話延續 (Multi-turn Text-to-Text)"""
         provider = FakeChatProvider(mode="text")
         service = self._create_service(provider)
 
-        # Prepopulate session store
-        self.session_store.save(SessionData(session_id="multi_turn_1", conversation_ids=["c_old", "r_old"]))
+        # Prepopulate session store with turn 1
+        self.session_store.save(SessionData(
+            session_id="multi_turn_1",
+            conversation_id="c_old",
+            continuation_token="token_old",
+            turn_index=1,
+        ))
 
         req = ChatRequest(prompt="接續上一句", session_id="multi_turn_1")
         chunks = [c async for c in service.stream_chat(req)]
         self.assertTrue(len(chunks) > 0)
 
-        # Verify captured session data in provider
+        # Verify captured session data in provider had turn 1
         captured_session = provider.captured_session_data[0]
         self.assertIsNotNone(captured_session)
-        self.assertEqual(captured_session.conversation_ids, ["c_old", "r_old"])
+        self.assertEqual(captured_session.conversation_id, "c_old")
+        self.assertEqual(captured_session.turn_index, 1)
+
+        # Verify that after turn 2 finishes, turn_index is advanced to 2
+        saved_session = self.session_store.load("multi_turn_1")
+        self.assertEqual(saved_session.turn_index, 2)
 
     async def test_text_to_image_generation(self):
         """Scenario 2: 文字生成圖片 (Text-to-Image)"""

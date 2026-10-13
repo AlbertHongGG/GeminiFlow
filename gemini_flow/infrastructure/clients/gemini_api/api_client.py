@@ -47,26 +47,23 @@ class GeminiAPIClient(IChatProvider):
         session_data: Optional[SessionData] = None
     ) -> AsyncGenerator[ChatResponseChunk, None]:
         
-        conversation_ids = session_data.conversation_ids if session_data else []
         uploads = []
         if request.images:
             logger.info(f"Uploading {len(request.images)} images...")
             uploads = await self.upload_images(request.images)
 
-        turn_index = 1 if conversation_ids else 0
         proto_req = self.protocol_engine.build_request(
             request=request,
             tokens=tokens,
+            session_data=session_data,
             uploads=uploads,
-            conversation_ids=conversation_ids,
-            turn_index=turn_index,
         )
         params = proto_req.params
         headers = proto_req.headers
         data = proto_req.data
 
         parser = StreamParser()
-        emitted_session_ids = False
+        emitted_session = False
         final_image_candidate = None
         fallback_image_candidate = None
         
@@ -87,14 +84,17 @@ class GeminiAPIClient(IChatProvider):
                     elif image_type == "output":
                         final_image_candidate = url
 
-                delta, ids = parser.extract_text_delta(raw_line)
+                parsed_delta = parser.extract_text_delta(raw_line)
                 
-                if ids and not emitted_session_ids:
-                    emitted_session_ids = True
-                    yield ChatResponseChunk(session_ids=ids)
+                if parsed_delta.conversation_id and not emitted_session:
+                    emitted_session = True
+                    yield ChatResponseChunk(
+                        conversation_id=parsed_delta.conversation_id,
+                        continuation_token=parsed_delta.continuation_token,
+                    )
 
-                if delta:
-                    yield ChatResponseChunk(text=delta)
+                if parsed_delta.text:
+                    yield ChatResponseChunk(text=parsed_delta.text)
 
         # Flush buffer
         if buffer.strip():
@@ -106,16 +106,19 @@ class GeminiAPIClient(IChatProvider):
                 elif image_type == "output":
                     final_image_candidate = url
             
-            delta, ids = parser.extract_text_delta(raw_line)
-            if ids and not emitted_session_ids:
-                yield ChatResponseChunk(session_ids=ids)
+            parsed_delta = parser.extract_text_delta(raw_line)
+            if parsed_delta.conversation_id and not emitted_session:
+                emitted_session = True
+                yield ChatResponseChunk(
+                    conversation_id=parsed_delta.conversation_id,
+                    continuation_token=parsed_delta.continuation_token,
+                )
 
-            if delta:
-                yield ChatResponseChunk(text=delta)
+            if parsed_delta.text:
+                yield ChatResponseChunk(text=parsed_delta.text)
 
         # Return final image
         img_url = final_image_candidate or fallback_image_candidate
         if img_url:
             logger.info(f"Image generation detected: {img_url}")
-            # The download image logic will be in ChatService to maintain separation of concerns
             yield ChatResponseChunk(image_url=img_url)

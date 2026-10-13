@@ -1,8 +1,5 @@
 import logging
-import time
-import base64
-from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData
 from gemini_flow.domain.interfaces import IAuthService, IChatProvider, ISessionStore, IImageDownloader
 from gemini_flow.domain.exceptions import TokenExpiredError
@@ -29,6 +26,8 @@ class ChatService:
         session_data = None
         if request.session_id:
             session_data = self.session_store.load(request.session_id)
+            if session_data is None:
+                session_data = SessionData(session_id=request.session_id)
 
         try:
             tokens = await self.auth_service.ensure_valid_tokens()
@@ -47,9 +46,6 @@ class ChatService:
             if not request.auto_refresh_cookies:
                 raise
             logger.info("Token expired during request. Forcing refresh and retrying...")
-            # We assume ensure_valid_tokens will try Playwright if HTTP fetch fails
-            # But since HTTP fetch uses cached cookies, we might need to force refresh.
-            # The current playwright_auth tries HTTP first. If we got TokenExpiredError, HTTP fetch might fail too, triggering Playwright.
             tokens = await self.auth_service.ensure_valid_tokens()
             cookies = await self.auth_service.get_cookies_dict()
             self.http_client.update_cookies(cookies)
@@ -57,11 +53,18 @@ class ChatService:
             async for chunk in self._execute_stream(request, tokens, session_data, cookies):
                 yield chunk
 
-    async def _execute_stream(self, request: ChatRequest, tokens, session_data, cookies: dict) -> AsyncGenerator[ChatResponseChunk, None]:
+    async def _execute_stream(
+        self, 
+        request: ChatRequest, 
+        tokens, 
+        session_data: Optional[SessionData], 
+        cookies: dict
+    ) -> AsyncGenerator[ChatResponseChunk, None]:
         async for chunk in self.chat_provider.stream_generate(request, tokens, session_data):
-            if chunk.session_ids and request.session_id:
-                new_session_data = SessionData(session_id=request.session_id, conversation_ids=chunk.session_ids)
-                self.session_store.save(new_session_data)
+            if chunk.conversation_id and session_data:
+                session_data.conversation_id = chunk.conversation_id
+                session_data.advance_turn(chunk.continuation_token)
+                self.session_store.save(session_data)
                 
             if chunk.image_url:
                 img_url = chunk.image_url

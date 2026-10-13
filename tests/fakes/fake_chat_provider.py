@@ -24,7 +24,7 @@ class FakeChatProvider(IChatProvider):
         session_data: Optional[SessionData] = None,
     ) -> AsyncGenerator[ChatResponseChunk, None]:
         self.captured_requests.append(request)
-        self.captured_session_data.append(session_data)
+        self.captured_session_data.append(session_data.model_copy() if session_data else None)
 
         if self.token_expired_once and not self.expired_occurred:
             self.expired_occurred = True
@@ -35,8 +35,11 @@ class FakeChatProvider(IChatProvider):
                 yield chunk
             return
 
-        # 1. Emit Session IDs first
-        yield ChatResponseChunk(session_ids=["c_fake_conv_123", "r_fake_resp_456", "rc_fake_choice_789"])
+        # 1. Emit Session / Context first
+        yield ChatResponseChunk(
+            conversation_id="c_fake_conv_123",
+            continuation_token="AwAAAAAAAAAQANM7mFakeToken12345",
+        )
 
         if self.mode == "text":
             # Text generation simulation

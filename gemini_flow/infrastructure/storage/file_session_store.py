@@ -18,13 +18,11 @@ class FileSessionStore(ISessionStore):
         if not path.exists():
             return None
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, list) and len(data) >= 2:
-                return SessionData(session_id=session_id, conversation_ids=data)
+            raw = path.read_text(encoding="utf-8")
+            return SessionData.model_validate_json(raw)
         except Exception:
-            pass
-        return None
+            return None
 
     def save(self, data: SessionData) -> None:
         path = self._get_path(data.session_id)
-        path.write_text(json.dumps(data.conversation_ids, ensure_ascii=False), encoding="utf-8")
+        path.write_text(data.model_dump_json(indent=2), encoding="utf-8")

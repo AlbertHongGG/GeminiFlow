@@ -6,14 +6,27 @@ from pydantic import BaseModel
 class ModelFamily(str, Enum):
     FLASH = "flash"
     PRO = "pro"
+    ARGON = "argon"
 
     @property
     def model_id(self) -> int:
-        return 1 if self == ModelFamily.FLASH else 3
+        if self == ModelFamily.FLASH:
+            return 1
+        if self == ModelFamily.PRO:
+            return 3
+        if self == ModelFamily.ARGON:
+            return 8
+        return 1
 
     @property
     def model_hash(self) -> str:
-        return "56fdd199312815e2" if self == ModelFamily.FLASH else "e6fa609c3fa255c0"
+        if self == ModelFamily.FLASH:
+            return "56fdd199312815e2"
+        if self == ModelFamily.PRO:
+            return "e6fa609c3fa255c0"
+        if self == ModelFamily.ARGON:
+            return "95a4c0abcba24364"
+        return "56fdd199312815e2"
 
 
 class ThinkingLevel(IntEnum):
@@ -69,7 +82,12 @@ class ModelSpec(BaseModel):
         lower = raw.lower()
 
         # Determine family strictly from model identity
-        family = ModelFamily.PRO if "pro" in lower else ModelFamily.FLASH
+        if any(k in lower for k in ("argon", "gemini-4", "gemini4")):
+            family = ModelFamily.ARGON
+        elif "pro" in lower:
+            family = ModelFamily.PRO
+        else:
+            family = ModelFamily.FLASH
 
         # Determine thinking level strictly from thinking parameter
         thinking_lvl = ThinkingLevel.from_value(thinking)

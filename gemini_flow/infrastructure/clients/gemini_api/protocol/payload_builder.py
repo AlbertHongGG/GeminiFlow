@@ -6,7 +6,8 @@ from gemini_flow.domain.models import ModelSpec
 class GeminiPayloadBuilder:
     """
     Constructs the 99-element inner Protobuf/JSPB array for Gemini StreamGenerate requests.
-    Eliminates magic numbers by assigning named semantic constants and structural builders.
+    Eliminates magic numbers by assigning named semantic constants conforming to
+    the latest October 2026 wire protocol specification.
     """
 
     ARRAY_LENGTH = 99
@@ -14,12 +15,13 @@ class GeminiPayloadBuilder:
     # Named indices in inner_req
     IDX_PROMPT_BLOCK = 0
     IDX_LANGUAGE = 1
-    IDX_CONVERSATION_IDS = 2
     IDX_TURN_INDEX = 17
     IDX_CAPABILITIES = 30
     IDX_REQ_UUID = 59
+    IDX_CONVERSATION_CONTEXT = 71
     IDX_MODEL_ID = 79
     IDX_THINKING_LEVEL = 80
+    IDX_NEW_SESSION_FLAG = 96
 
     def __init__(
         self,
@@ -29,7 +31,8 @@ class GeminiPayloadBuilder:
         model_spec: ModelSpec,
         req_uuid: str,
         uploads: Optional[Sequence[Tuple[str, str]]] = None,
-        conversation_ids: Optional[Sequence[str]] = None,
+        conversation_id: Optional[str] = None,
+        continuation_token: Optional[str] = None,
         turn_index: int = 0,
     ):
         self.prompt = prompt
@@ -40,7 +43,8 @@ class GeminiPayloadBuilder:
         self.model_spec = model_spec
         self.req_uuid = req_uuid
         self.uploads = uploads or []
-        self.conversation_ids = conversation_ids or []
+        self.conversation_id = conversation_id
+        self.continuation_token = continuation_token
         self.turn_index = turn_index
 
     def _build_image_list(self) -> Optional[List[Any]]:
@@ -50,18 +54,28 @@ class GeminiPayloadBuilder:
             [[upload_ref, 1], image_name] for upload_ref, image_name in self.uploads
         ]
 
-    def _build_conversation_block(self) -> Optional[List[Any]]:
-        if not self.conversation_ids:
+    def _build_conversation_context(self) -> Optional[List[Any]]:
+        """
+        Builds the 8-element conversation continuation block for arr[71].
+        [conv_id, None, None, None, None, None, None, continuation_token]
+        Only populated on turn_index > 0 when a conversation_id is available.
+        """
+        if self.turn_index == 0 or not self.conversation_id:
             return None
-        c_id = self.conversation_ids[0] if len(self.conversation_ids) >= 1 else ""
-        r_id = self.conversation_ids[1] if len(self.conversation_ids) >= 2 else ""
-        rc_id = self.conversation_ids[2] if len(self.conversation_ids) >= 3 else ""
-        return [c_id, r_id, rc_id, None, None, None, None, None, None, ""]
+        return [
+            self.conversation_id,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            self.continuation_token,
+        ]
 
     def build_inner_array(self) -> List[Any]:
         """
-        Builds the complete 99-element Protobuf/JSPB request array conforming to
-        the 2026-10 Gemini Web specification.
+        Builds the complete 99-element Protobuf/JSPB request array.
         """
         arr: List[Any] = [None] * self.ARRAY_LENGTH
 
@@ -79,18 +93,13 @@ class GeminiPayloadBuilder:
         # 1: Language block
         arr[self.IDX_LANGUAGE] = [self.language]
 
-        # 2: Conversation context (keeps backward compatible tracking)
-        conv_block = self._build_conversation_block()
-        if conv_block is not None:
-            arr[self.IDX_CONVERSATION_IDS] = conv_block
-
         # Standard static protocol flags
         arr[6] = [0]
         arr[7] = 1
         arr[10] = 1
         arr[11] = 0
 
-        # 17: Turn sequence index
+        # 17: Turn sequence index [[0]], [[1]], etc.
         arr[self.IDX_TURN_INDEX] = [[self.turn_index]]
         arr[18] = 0
         arr[27] = 1
@@ -107,13 +116,17 @@ class GeminiPayloadBuilder:
         arr[67] = 0
         arr[68] = 1
 
+        # 71: Conversation continuation context
+        arr[self.IDX_CONVERSATION_CONTEXT] = self._build_conversation_context()
+
         # 79 & 80: Model routing ID and Thinking level
         arr[self.IDX_MODEL_ID] = self.model_spec.model_id
         arr[self.IDX_THINKING_LEVEL] = self.model_spec.thinking_level
 
         # End flags
         arr[91] = 1
-        arr[96] = 1
+        # 96: 0 for new session (turn 0), 1 for continuing session (turn > 0)
+        arr[self.IDX_NEW_SESSION_FLAG] = 0 if self.turn_index == 0 else 1
         arr[98] = 1
 
         return arr

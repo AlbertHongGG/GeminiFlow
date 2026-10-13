@@ -17,10 +17,12 @@ class TestFakesAndFixtures(unittest.IsolatedAsyncioTestCase):
     async def test_fake_session_store(self):
         store = FakeSessionStore()
         self.assertIsNone(store.load("s1"))
-        store.save(SessionData(session_id="s1", conversation_ids=["c1", "r1"]))
+        store.save(SessionData(session_id="s1", conversation_id="c1", continuation_token="t1", turn_index=2))
         saved = store.load("s1")
         self.assertIsNotNone(saved)
-        self.assertEqual(saved.conversation_ids, ["c1", "r1"])
+        self.assertEqual(saved.conversation_id, "c1")
+        self.assertEqual(saved.continuation_token, "t1")
+        self.assertEqual(saved.turn_index, 2)
 
     async def test_fake_image_downloader(self):
         dl = FakeImageDownloader()
@@ -37,7 +39,7 @@ class TestFakesAndFixtures(unittest.IsolatedAsyncioTestCase):
         req = ChatRequest(prompt="測試")
         tokens = GeminiTokens(snlm0e="tok")
         chunks = [c async for c in p_text.stream_generate(req, tokens)]
-        self.assertTrue(any(c.session_ids for c in chunks))
+        self.assertTrue(any(c.conversation_id for c in chunks))
         self.assertTrue(any(c.text for c in chunks))
 
         # Image generation mode
@@ -47,8 +49,9 @@ class TestFakesAndFixtures(unittest.IsolatedAsyncioTestCase):
 
     def test_parser_with_fixtures(self):
         parser = StreamParser()
-        delta, ids = parser.extract_text_delta(SAMPLE_TEXT_LINE)
-        self.assertEqual(ids[0], "c_11d858511efb9729")
+        delta, conv_id, token = parser.extract_text_delta(SAMPLE_TEXT_LINE)
+        self.assertEqual(conv_id, "c_11d858511efb9729")
+        self.assertEqual(token, "AwAAAAAAAAAQANM7mBjXKZS5cPttExo")
         self.assertIn("這是測試回答第一部分", delta)
 
         candidates = parser.extract_image_candidates(SAMPLE_IMAGE_LINE)
