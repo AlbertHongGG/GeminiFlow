@@ -241,7 +241,6 @@ async def init_app_state(app: web.Application):
     
     # Enter the context manager manually for app lifecycle
     await app[HTTP_CLIENT_KEY].__aenter__()
-    await app[BROWSER_KEY].start()
     
     # Ensure image directory exists
     config.image_output_dir.mkdir(parents=True, exist_ok=True)

@@ -7,7 +7,7 @@ GEMINI_REQUEST_URL = "https://gemini.google.com/_/BardChatUi/data/assistant.lamd
 UPLOAD_IMAGE_URL = "https://content-push.googleapis.com/upload/"
 
 # Protocol constants
-REQUEST_BL_PARAM = "boq_gemini-web-uiserver_20261012.15_p0"
+REQUEST_BL_PARAM = "boq_gemini-web-uiserver_20261012.19_p1"
 REQUIRED_COOKIE_NAME = "__Secure-1PSID"
 GOOGLE_COOKIE_DOMAIN = ".google.com"
 
@@ -27,6 +27,12 @@ DEFAULT_HTTP_HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     ),
+    "sec-ch-ua": '"Chromium";v="120", "Google Chrome";v="120", "Not(A:Brand";v="24"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
 }
 
 UPLOAD_IMAGE_HEADERS = {

@@ -1,17 +1,16 @@
 import logging
 from typing import AsyncGenerator, Optional, List, Tuple
-from gemini_flow.domain.interfaces import IChatProvider
+from gemini_flow.domain.interfaces import IChatProvider, IHttpClient
 from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, ImagePayload
 from gemini_flow.domain.exceptions import NetworkError, ProtocolError
 from gemini_flow.config import UPLOAD_IMAGE_HEADERS, UPLOAD_IMAGE_URL, GEMINI_REQUEST_URL, REQUEST_BL_PARAM
-from ..http_client import HttpClient
 from .protocol import GeminiProtocolEngine
 from .parser import StreamParser
 
 logger = logging.getLogger("gemini_flow.api_client")
 
 class GeminiAPIClient(IChatProvider):
-    def __init__(self, http_client: HttpClient, server_bl: str = REQUEST_BL_PARAM):
+    def __init__(self, http_client: IHttpClient, server_bl: str = REQUEST_BL_PARAM):
         self.http_client = http_client
         self.protocol_engine = GeminiProtocolEngine(server_bl=server_bl)
 

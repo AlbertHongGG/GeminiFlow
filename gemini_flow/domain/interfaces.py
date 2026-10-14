@@ -1,7 +1,67 @@
 import abc
-from typing import AsyncGenerator, List, Optional, Any
+from typing import AsyncGenerator, List, Optional, Any, Dict
 from pathlib import Path
 from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens
+
+class IHttpResponse(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def status_code(self) -> int:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def headers(self) -> Dict[str, str]:
+        pass
+
+    @abc.abstractmethod
+    async def text(self) -> str:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def content(self) -> bytes:
+        pass
+
+class IHttpClient(abc.ABC):
+    @abc.abstractmethod
+    async def __aenter__(self) -> "IHttpClient":
+        pass
+
+    @abc.abstractmethod
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        pass
+
+    @abc.abstractmethod
+    def update_cookies(self, cookies: Dict[str, str]) -> None:
+        pass
+
+    @abc.abstractmethod
+    async def get_text(self, url: str, headers: Optional[Dict[str, str]] = None) -> str:
+        pass
+
+    @abc.abstractmethod
+    async def post_stream(
+        self,
+        url: str,
+        params: Dict[str, str],
+        data: Dict[str, str],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> AsyncGenerator[str, None]:
+        pass
+
+    @abc.abstractmethod
+    async def post_form(
+        self,
+        url: str,
+        data: Any,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> IHttpResponse:
+        pass
+
+    @abc.abstractmethod
+    async def close(self) -> None:
+        pass
 
 class IAuthService(abc.ABC):
     @abc.abstractmethod

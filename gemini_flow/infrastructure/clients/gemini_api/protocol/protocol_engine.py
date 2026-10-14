@@ -33,11 +33,13 @@ class GeminiProtocolEngine:
     ) -> ProtocolRequest:
         req_uuid = str(uuid.uuid4()).upper()
         model_spec = request.model_spec
+        effective_bl = tokens.server_bl or self.server_bl
 
         # 1. URL Query Parameters
         params = {
-            "bl": self.server_bl,
+            "bl": effective_bl,
             "hl": request.language,
+            "pageId": "none",
             "_reqid": str(random.randint(111111, 9999999)),
             "rt": "c",
             "f.sid": tokens.sid or "",
@@ -48,7 +50,7 @@ class GeminiProtocolEngine:
             model_spec=model_spec,
             session_uuid=self.session_uuid,
             req_uuid=req_uuid,
-            server_bl=self.server_bl,
+            server_bl=effective_bl,
         )
         headers = header_builder.build_all_headers()
 

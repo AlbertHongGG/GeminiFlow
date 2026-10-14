@@ -117,6 +117,7 @@ class TestProtocolEngine(unittest.TestCase):
         proto_req = engine.build_request(req, tokens, session_data=session)
         self.assertEqual(proto_req.params["bl"], "boq_gemini-web-uiserver_20261012.15_p0")
         self.assertEqual(proto_req.params["hl"], "zh-TW")
+        self.assertEqual(proto_req.params["pageId"], "none")
         self.assertEqual(proto_req.params["f.sid"], "123456789")
         self.assertEqual(proto_req.data["at"], "TEST_SNLM0E")
 
@@ -128,6 +129,16 @@ class TestProtocolEngine(unittest.TestCase):
         self.assertEqual(inner[79], 8)
         self.assertEqual(inner[80], 2)
         self.assertEqual(inner[96], 1)
+
+    def test_protocol_engine_with_dynamic_server_bl(self):
+        engine = GeminiProtocolEngine(server_bl="boq_gemini-web-uiserver_20261012.15_p0")
+        tokens = GeminiTokens(snlm0e="TEST_SNLM0E", sid="123", server_bl="boq_gemini-web-uiserver_20261012.19_p1")
+        req = ChatRequest(prompt="測試")
+        proto = engine.build_request(req, tokens)
+        self.assertEqual(proto.params["bl"], "boq_gemini-web-uiserver_20261012.19_p1")
+        self.assertEqual(proto.params["pageId"], "none")
+        h525 = json.loads(proto.headers["x-goog-ext-525001261-jspb"])
+        self.assertEqual(h525[17], ["boq_gemini-web-uiserver_20261012.19_p1"])
 
 if __name__ == "__main__":
     unittest.main()

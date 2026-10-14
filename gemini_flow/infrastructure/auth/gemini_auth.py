@@ -40,9 +40,17 @@ class GeminiAuthService(IAuthService):
         sid_match = re.search(r'"FdrFJe":"([\d-]+)"', html)
         sid = sid_match.group(1) if sid_match else None
 
+        # Dynamically extract current server_bl version
+        bl_match = (
+            re.search(r'"cfb2h":"([^"]+)"', html)
+            or re.search(r'cfb2h\\":\\"([^\\"]+)\\"', html)
+            or re.search(r'(boq_gemini-web-uiserver_[0-9a-zA-Z._]+)', html)
+        )
+        server_bl = bl_match.group(1) if bl_match else None
+
         if not snlm0e:
             return None
-        return GeminiTokens(snlm0e=snlm0e, sid=sid)
+        return GeminiTokens(snlm0e=snlm0e, sid=sid, server_bl=server_bl)
 
     async def ensure_valid_tokens(self) -> GeminiTokens:
         try:

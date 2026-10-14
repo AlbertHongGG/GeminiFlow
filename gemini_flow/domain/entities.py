@@ -52,3 +52,4 @@ class ChatResponseChunk(BaseModel):
 class GeminiTokens(BaseModel):
     snlm0e: str
     sid: Optional[str] = None
+    server_bl: Optional[str] = None

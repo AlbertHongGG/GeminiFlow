@@ -106,7 +106,6 @@ async def _run_chat(args: argparse.Namespace, chat_service: Optional[ChatService
         
         async with HttpClient(proxy=config.proxy) as http_client:
             browser_provider = PlaywrightWebBrowser(config.cookies_dir / ".pw-profile", browser_channel="chrome", headless=True)
-            await browser_provider.start()
             
             try:
                 cookie_store = FileCookieStore(config.cookies_dir)

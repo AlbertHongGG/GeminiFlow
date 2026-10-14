@@ -1,14 +1,67 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional, AsyncGenerator
+from gemini_flow.domain.interfaces import IHttpClient, IHttpResponse
 
-class FakeHttpClient:
+class FakeHttpResponse(IHttpResponse):
+    def __init__(self, status_code: int = 200, headers: Optional[Dict[str, str]] = None, content: bytes = b""):
+        self._status_code = status_code
+        self._headers = headers or {}
+        self._content = content
+
+    @property
+    def status_code(self) -> int:
+        return self._status_code
+
+    @property
+    def status(self) -> int:
+        return self._status_code
+
+    @property
+    def headers(self) -> Dict[str, str]:
+        return self._headers
+
+    @property
+    def content(self) -> bytes:
+        return self._content
+
+    async def text(self) -> str:
+        return self._content.decode("utf-8", errors="replace")
+
+
+class FakeHttpClient(IHttpClient):
     def __init__(self):
         self.cookies: Dict[str, Any] = {}
+        self.response_text: str = ""
+        self.stream_chunks: list[str] = []
 
-    def update_cookies(self, cookies: Any):
+    def update_cookies(self, cookies: Any) -> None:
         self.cookies = cookies
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "FakeHttpClient":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        pass
+
+    async def get_text(self, url: str, headers: Optional[Dict[str, str]] = None) -> str:
+        return self.response_text
+
+    async def post_stream(
+        self,
+        url: str,
+        params: Dict[str, str],
+        data: Dict[str, str],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> AsyncGenerator[str, None]:
+        for chunk in self.stream_chunks:
+            yield chunk
+
+    async def post_form(
+        self,
+        url: str,
+        data: Any,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> IHttpResponse:
+        return FakeHttpResponse(200, {}, b"fake_upload_ref")
+
+    async def close(self) -> None:
         pass

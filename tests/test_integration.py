@@ -28,13 +28,15 @@ class TestIntegration(unittest.TestCase):
         f_req = json.loads(proto.data["f.req"])
         inner = json.loads(f_req[1])
 
+        self.assertEqual(proto.params["pageId"], "none")
+        self.assertEqual(proto.params["bl"], REQUEST_BL_PARAM)
         self.assertEqual(h525[4], "56fdd199312815e2")
         self.assertEqual(h525[14], 1)
         self.assertEqual(h525[15], 1)
         self.assertEqual(inner[0][0], "第一次測試")
         self.assertIsNone(inner[2])
         self.assertEqual(inner[17], [[0]])
-        self.assertIsNone(inner[71])
+        self.assertEqual(inner[71], None)
         self.assertEqual(inner[79], 1)
         self.assertEqual(inner[80], 1)
         self.assertEqual(inner[96], 0)
@@ -59,6 +61,8 @@ class TestIntegration(unittest.TestCase):
         f_req = json.loads(proto.data["f.req"])
         inner = json.loads(f_req[1])
 
+        self.assertEqual(proto.params["pageId"], "none")
+        self.assertEqual(proto.params["bl"], REQUEST_BL_PARAM)
         self.assertEqual(h525[4], "e6fa609c3fa255c0")
         self.assertEqual(h525[14], 3)
         self.assertEqual(h525[15], 1)
@@ -93,6 +97,8 @@ class TestIntegration(unittest.TestCase):
         f_req = json.loads(proto.data["f.req"])
         inner = json.loads(f_req[1])
 
+        self.assertEqual(proto.params["pageId"], "none")
+        self.assertEqual(proto.params["bl"], REQUEST_BL_PARAM)
         self.assertEqual(h525[4], "95a4c0abcba24364")
         self.assertEqual(h525[14], 8)
         self.assertEqual(h525[15], 1)
@@ -127,6 +133,8 @@ class TestIntegration(unittest.TestCase):
         f_req = json.loads(proto.data["f.req"])
         inner = json.loads(f_req[1])
 
+        self.assertEqual(proto.params["pageId"], "none")
+        self.assertEqual(proto.params["bl"], REQUEST_BL_PARAM)
         self.assertEqual(h525[4], "95a4c0abcba24364")
         self.assertEqual(h525[14], 8)
         self.assertEqual(h525[15], 4)  # medium thinking = 4
@@ -161,6 +169,8 @@ class TestIntegration(unittest.TestCase):
         f_req = json.loads(proto.data["f.req"])
         inner = json.loads(f_req[1])
 
+        self.assertEqual(proto.params["pageId"], "none")
+        self.assertEqual(proto.params["bl"], REQUEST_BL_PARAM)
         self.assertEqual(h525[4], "95a4c0abcba24364")
         self.assertEqual(h525[14], 8)
         self.assertEqual(h525[15], 2)  # high thinking = 2

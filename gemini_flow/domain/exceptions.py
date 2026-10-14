@@ -22,6 +22,10 @@ class TokenExpiredError(GeminiFlowError):
     """Raised when SNlM0e or SID tokens are no longer valid during a request."""
     pass
 
+class RateLimitError(GeminiFlowError):
+    """Raised when Google responds with HTTP 429 Too Many Requests or rate limits."""
+    pass
+
 class RequireManualLoginError(AuthenticationError):
     """Raised when the user needs to manually login (e.g. captcha, terms of service)."""
     pass

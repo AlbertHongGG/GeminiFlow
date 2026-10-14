@@ -55,9 +55,15 @@ class PlaywrightWebBrowser(IWebBrowser):
             self._playwright = None
             logger.info("Playwright browser stopped.")
 
+    async def ensure_started(self) -> None:
+        """Lazily starts the browser if not already started."""
+        if self._browser_context is None:
+            await self.start()
+
     async def navigate_and_get_html(self, url: str, wait_selector: str, timeout: int = 5000) -> str:
+        await self.ensure_started()
         if not self._browser_context:
-            raise RuntimeError("Browser is not started.")
+            raise RuntimeError("Browser failed to start.")
             
         page = await self._browser_context.new_page()
         try:
@@ -71,13 +77,15 @@ class PlaywrightWebBrowser(IWebBrowser):
             await page.close()
             
     async def get_cookies(self) -> list[dict]:
+        await self.ensure_started()
         if not self._browser_context:
-            raise RuntimeError("Browser is not started.")
+            raise RuntimeError("Browser failed to start.")
         return await self._browser_context.cookies()
         
     async def download_file(self, url: str, dest_path: Path) -> Path:
+        await self.ensure_started()
         if not self._browser_context:
-            raise RuntimeError("Browser is not started.")
+            raise RuntimeError("Browser failed to start.")
             
         response = await self._browser_context.request.get(url)
         if not response.ok:
