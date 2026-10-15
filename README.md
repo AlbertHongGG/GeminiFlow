@@ -49,18 +49,20 @@ cp .env.example .env
 
 ### 3.1 參數清單
 ```text
-python cli.py chat <prompt> [選項]
+python cli.py chat [prompt] [選項]
 
 位置參數:
-  prompt                 使用者輸入提示詞 (必填)
+  prompt                 使用者輸入提示詞 (若提供 -f/--file 則為選填)
 
 選用參數:
+  -f, --file             從文字檔案載入提示詞 (例如: -f input/prompt.txt)
   -m, --model            模型名稱 (預設: gemini-3.8-flash，支援 flash, pro, argon, flash-lite)
   -t, --thinking         思考模式等級 (low, medium, high，預設: low)
   --image                附加本機圖片路徑 (可重複傳入多次，例如: --image a.png --image b.jpg)
   --lang                 語言代碼 (預設: zh-TW)
   --session-id           指定對話會話識別碼 (維持多輪上下文歷史)
   --system-prompt        設定系統提示詞 (約束回覆風格與角色設定)
+  --system-prompt-file   從文字檔案載入系統提示詞
   --debug                啟用詳細除錯日誌輸出
 ```
 
@@ -69,6 +71,13 @@ python cli.py chat <prompt> [選項]
 **基本對話 (預設 Flash 模型):**
 ```bash
 uv run python cli.py chat "你好，請用一句話介紹你自己"
+```
+
+**從檔案載入提示詞 (Prompt from File):**
+```bash
+uv run python cli.py chat -f input/prompt.txt
+# 或使用完整參數名稱
+uv run python cli.py chat --file input/prompt.txt
 ```
 
 **指定 3.1 Pro 進行進階程式設計:**
@@ -95,9 +104,9 @@ uv run python cli.py chat "我的代號是什麼？" --session-id "sess_001"
 uv run python cli.py chat "描述這張架構圖的核心組件" --image ./architecture.png
 ```
 
-**指定系統提示詞與繁體中文語系:**
+**指定系統提示詞與檔案 (System Prompt from File):**
 ```bash
-uv run python cli.py chat "請評估此方案優缺點" --system-prompt "你是一位具備 20 年經驗的分散式系統架構師" --lang zh-TW
+uv run python cli.py chat -f input/prompt.txt --system-prompt-file prompts/persona.txt --lang zh-TW
 ```
 
 ---

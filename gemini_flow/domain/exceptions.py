@@ -42,3 +42,23 @@ class VmExecutionError(AttestationError):
     """Raised when executing the Botguard VM in the JS engine fails."""
     pass
 
+class PromptInputError(GeminiFlowError):
+    """Raised when resolving a prompt input fails."""
+    pass
+
+class PromptFileNotFoundError(PromptInputError):
+    """Raised when the specified prompt file does not exist or cannot be accessed."""
+    pass
+
+class PromptEmptyError(PromptInputError):
+    """Raised when the prompt content is empty or only whitespace."""
+    pass
+
+class PromptEncodingError(PromptInputError):
+    """Raised when the prompt file cannot be decoded as text."""
+    pass
+
+class PromptConflictError(PromptInputError):
+    """Raised when conflicting prompt sources are provided (e.g. both inline prompt and file)."""
+    pass
+
