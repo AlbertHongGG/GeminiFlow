@@ -28,10 +28,11 @@ class FakeHttpResponse(IHttpResponse):
 
 
 class FakeHttpClient(IHttpClient):
-    def __init__(self):
+    def __init__(self, stream_chunks: Optional[list[str]] = None):
         self.cookies: Dict[str, Any] = {}
         self.response_text: str = ""
-        self.stream_chunks: list[str] = []
+        self.stream_chunks: list[str] = stream_chunks or []
+        self.post_stream_calls: list[tuple[str, Dict[str, str], Dict[str, str], Optional[Dict[str, str]]]] = []
 
     def update_cookies(self, cookies: Any) -> None:
         self.cookies = cookies
@@ -52,6 +53,7 @@ class FakeHttpClient(IHttpClient):
         data: Dict[str, str],
         headers: Optional[Dict[str, str]] = None,
     ) -> AsyncGenerator[str, None]:
+        self.post_stream_calls.append((url, params, data, headers))
         for chunk in self.stream_chunks:
             yield chunk
 

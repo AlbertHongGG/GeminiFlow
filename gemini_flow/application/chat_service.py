@@ -1,9 +1,8 @@
 import logging
 from typing import AsyncGenerator, Optional
 from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData
-from gemini_flow.domain.interfaces import IAuthService, IChatProvider, ISessionStore, IImageDownloader
+from gemini_flow.domain.interfaces import IAuthService, IChatProvider, ISessionStore, IImageDownloader, IHttpClient
 from gemini_flow.domain.exceptions import TokenExpiredError
-from gemini_flow.infrastructure.clients.http_client import HttpClient
 
 logger = logging.getLogger("gemini_flow.chat_service")
 
@@ -13,7 +12,7 @@ class ChatService:
         auth_service: IAuthService, 
         chat_provider: IChatProvider, 
         session_store: ISessionStore,
-        http_client: HttpClient,
+        http_client: IHttpClient,
         image_downloader: IImageDownloader
     ):
         self.auth_service = auth_service
@@ -67,19 +66,8 @@ class ChatService:
                 self.session_store.save(session_data)
                 
             if chunk.image_url:
-                img_url = chunk.image_url
-                if "googleusercontent.com" in img_url:
-                    import re
-                    parts = img_url.split("?", 1)
-                    base = parts[0]
-                    if "=" in base:
-                        base = re.sub(r'=[^=]*$', '=s0-d', base)
-                    else:
-                        base += "=s0-d"
-                    img_url = base + ("?" + parts[1] if len(parts) > 1 else "")
-                    
                 try:
-                    local_path = await self.image_downloader.download_image(img_url, request.model)
+                    local_path = await self.image_downloader.download_image(chunk.image_url, request.model)
                     chunk.image_local_path = str(local_path.resolve())
                 except Exception as e:
                     logger.error(f"Image download failed: {e}")

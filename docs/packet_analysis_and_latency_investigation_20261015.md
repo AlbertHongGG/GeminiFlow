@@ -33,8 +33,8 @@
 | Turn 5 | gemini4Argon | high | 第五次測試 | 8 | 2 | 95a4c0abcba24364 | [[4]] | [c_id, null*6, token] |
 
 系統代碼比對結果:
-- [models.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/domain/models.py) 中定義之 ModelFamily (FLASH=1, PRO=3, ARGON=8) 與 ThinkingLevel (LOW=1, MEDIUM=4, HIGH=2) 與封包 100% 吻合。
-- [payload_builder.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/protocol/payload_builder.py) 所產生之陣列索引完全命中。
+- [models.py](../gemini_flow/domain/models.py) 中定義之 ModelFamily (FLASH=1, PRO=3, ARGON=8) 與 ThinkingLevel (LOW=1, MEDIUM=4, HIGH=2) 與封包 100% 吻合。
+- [payload_builder.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/payload_builder.py) 所產生之陣列索引完全命中。
 
 ### 2.2 JSPB 擴展標頭陣列結構比對
 
@@ -51,7 +51,7 @@
    - [16]: session_uuid (頁面會話 UUID)
    - [17]: [server_bl] (伺服器建置版本標記)
    - [19]: 雙時間戳陣列 [[隨機數, 奈秒], [秒數, 奈秒]]
-   現有 [header_builder.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/protocol/header_builder.py) 之建構邏輯與此完全一致。
+   現有 [header_builder.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/header_builder.py) 之建構邏輯與此完全一致。
 
 2. x-goog-ext-525005358-jspb:
    - 結構: ["<REQ_UUID>", 1]
@@ -179,7 +179,7 @@ flowchart TD
 ```
 
 1. HttpClient 標頭遺漏 (裸奔):
-   [config.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/config.py) 中雖然定義了 `DEFAULT_HTTP_HEADERS`，但在 [cli.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/cli.py) 與 [server.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/server.py) 的 `HttpClient(proxy=config.proxy)` 初始化中**完全未傳入 headers 參數**。實際送出的 HTTP 標頭為 aiohttp 預設值，完全缺乏瀏覽器特徵。
+   [config.py](../gemini_flow/config.py) 中雖然定義了 `DEFAULT_HTTP_HEADERS`，但在 [cli.py](../cli.py) 與 [server.py](../server.py) 的 `HttpClient(proxy=config.proxy)` 初始化中**完全未傳入 headers 參數**。實際送出的 HTTP 標頭為 aiohttp 預設值，完全缺乏瀏覽器特徵。
 
 2. 觸發 Google Tarpit 慢速佇列 (75~170 秒):
    Google GFE 識別到來自 Python aiohttp 的 HTTP/1.1 連線後，觸發頻率限制與防爬審核機制，故意將連線保持開啟並延遲回應（Tarpit Delay），導致使用者端卡住數分鐘。
@@ -188,7 +188,7 @@ flowchart TD
    在被判定為可疑流量的連線中，若輸入涉及模型自我認知（如「介紹你自己」、「你是誰」）的 Prompt，後端會觸發安全降級策略，拒絕釋出模型真實身份資訊，轉而吐出固定的罐頭回應（「我幫不上忙，因為我只是個語言模型。」）。而若輸入非自我介紹的 Prompt（如「第一次測試」），在慢速佇列審核通過後仍能得到回答。
 
 4. Playwright 無條件冷啟動開銷:
-   在 [cli.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/cli.py) 中，每一次 CLI 啟動時均無條件啟動 Chrome 實例，帶來 3~8 秒的額外開銷與 profile 鎖定風險，但該瀏覽器實例在後續文字問答中並未實際參與請求。
+   在 [cli.py](../cli.py) 中，每一次 CLI 啟動時均無條件啟動 Chrome 實例，帶來 3~8 秒的額外開銷與 profile 鎖定風險，但該瀏覽器實例在後續文字問答中並未實際參與請求。
 
 ---
 
@@ -215,23 +215,23 @@ flowchart TD
 
 ### 6.1 第一階段: 基礎標頭與配置修復 (即刻實施)
 1. 配置更新:
-   將 [config.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/config.py) 中的 `REQUEST_BL_PARAM` 更新為 `boq_gemini-web-uiserver_20261012.19_p1`。
+   將 [config.py](../gemini_flow/config.py) 中的 `REQUEST_BL_PARAM` 更新為 `boq_gemini-web-uiserver_20261012.19_p1`。
 2. URL 參數補齊:
-   在 [protocol_engine.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/protocol/protocol_engine.py) 的 `params` 字典中新增 `"pageId": "none"`。
+   在 [protocol_engine.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/protocol_engine.py) 的 `params` 字典中新增 `"pageId": "none"`。
 3. 標頭注入:
-   在 [cli.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/cli.py) 與 [server.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/server.py) 初始化 `HttpClient` 時，強制帶入 `DEFAULT_HTTP_HEADERS`，確保每次請求具備合法之 Chrome User-Agent、Origin、Referer 與 x-same-domain 標頭。
+   在 [cli.py](../cli.py) 與 [server.py](../server.py) 初始化 `HttpClient` 時，強制帶入 `DEFAULT_HTTP_HEADERS`，確保每次請求具備合法之 Chrome User-Agent、Origin、Referer 與 x-same-domain 標頭。
 
 ### 6.2 第二階段: 傳輸層升級 (徹底消除 80+ 秒延遲)
 1. 傳輸客戶端整合:
-   將 [http_client.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/http_client.py) 升級為支援 Chrome 指紋之 HTTP 客戶端（利用環境中現有之 `curl_cffi` AsyncSession，模擬 chrome120 / HTTP/2 握手）。
+   將 [http_client.py](../gemini_flow/infrastructure/clients/http_client.py) 升級為支援 Chrome 指紋之 HTTP 客戶端（利用環境中現有之 `curl_cffi` AsyncSession，模擬 chrome120 / HTTP/2 握手）。
 2. 流式解析無縫相容:
-   確保升級後之非同步串流輸出格式與 [api_client.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/api_client.py) 完全相容。
+   確保升級後之非同步串流輸出格式與 [api_client.py](../gemini_flow/infrastructure/clients/gemini_api/api_client.py) 完全相容。
 
 ### 6.3 第三階段: CLI 流程與架構優化
 1. Playwright 惰性啟動 (Lazy Initialization):
-   修改 [cli.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/cli.py)，僅在 `ensure_valid_tokens()` 發現 Cookie 失效或需要下載特定受保護圖片時才啟動 Chrome 瀏覽器。一般對話免除瀏覽器冷啟動開銷。
+   修改 [cli.py](../cli.py)，僅在 `ensure_valid_tokens()` 發現 Cookie 失效或需要下載特定受保護圖片時才啟動 Chrome 瀏覽器。一般對話免除瀏覽器冷啟動開銷。
 2. 動態 bl 版號提取:
-   在 [gemini_auth.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/auth/gemini_auth.py) 提取網頁 HTML 時，同步正則解析當前 `boq_gemini-web-uiserver_*` 版本標記，徹底實現自動化版號追蹤。
+   在 [gemini_auth.py](../gemini_flow/infrastructure/auth/gemini_auth.py) 提取網頁 HTML 時，同步正則解析當前 `boq_gemini-web-uiserver_*` 版本標記，徹底實現自動化版號追蹤。
 
 ---
 
@@ -241,27 +241,27 @@ flowchart TD
 
 ### 7.1 重構模組實施清單
 
-1. 傳輸層全面升級 ([http_client.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/http_client.py)):
+1. 傳輸層全面升級 ([http_client.py](../gemini_flow/infrastructure/clients/http_client.py)):
    - 移除舊版 `aiohttp`，改採 `curl_cffi.requests.AsyncSession`。
    - 預設啟用 `impersonate="chrome120"`，具備 Chrome 120 完整 TLS/JA3 指紋與 HTTP/2 多路複用能力。
    - 配置標準請求標頭集（`sec-ch-ua` 系列 Client Hints、`Origin`、`Referer`、`x-same-domain`）。
    - 設定合理超時機制（預設 `timeout=120.0`），徹底避免 libcurl 預設 30 秒慢速中斷錯誤（`curl: (28) Operation too slow`）。
-   - 封裝 `CurlHttpResponse` 並實作抽象介面 [IHttpClient](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/domain/interfaces.py) 與 [IHttpResponse](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/domain/interfaces.py)，符合依賴反轉原則（DIP）。
+   - 封裝 `CurlHttpResponse` 並實作抽象介面 [IHttpClient](../gemini_flow/domain/interfaces.py) 與 [IHttpResponse](../gemini_flow/domain/interfaces.py)，符合依賴反轉原則（DIP）。
 
-2. 動態伺服器建置版本（BL）探索機制 ([gemini_auth.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/auth/gemini_auth.py)):
+2. 動態伺服器建置版本（BL）探索機制 ([gemini_auth.py](../gemini_flow/infrastructure/auth/gemini_auth.py)):
    - 於取得網頁 HTML 時，動態比對 `cfb2h` 與 `boq_gemini-web-uiserver_*` 正規表達式。
-   - 於 [entities.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/domain/entities.py) 的 `GeminiTokens` 中新增 `server_bl` 欄位。
-   - 協議引擎 [protocol_engine.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/protocol/protocol_engine.py) 動態優先取用 Token 所附之即時 BL，消除人工硬編碼維護成本。
+   - 於 [entities.py](../gemini_flow/domain/entities.py) 的 `GeminiTokens` 中新增 `server_bl` 欄位。
+   - 協議引擎 [protocol_engine.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/protocol_engine.py) 動態優先取用 Token 所附之即時 BL，消除人工硬編碼維護成本。
    - 查詢參數全面補正 `pageId=none`。
 
-3. 瀏覽器惰性生命週期解耦 ([playwright_browser.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/browser/playwright_browser.py)):
+3. 瀏覽器惰性生命週期解耦 ([playwright_browser.py](../gemini_flow/infrastructure/browser/playwright_browser.py)):
    - 實作 `ensure_started()` 機制。
-   - [cli.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/cli.py) 與 [server.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/server.py) 移除開機即強制啟動 Chrome 的舊邏輯。
+   - [cli.py](../cli.py) 與 [server.py](../server.py) 移除開機即強制啟動 Chrome 的舊邏輯。
    - 一般文字問答完全由輕量 HTTP 客戶端處理（耗時小於 0.5 秒）；僅在 Cookie 實效或圖片下載時才按需啟動 Playwright，並於結束後安全釋放，杜絕瀏覽器 Profile 鎖定衝突。
 
-4. 應用層與協定客戶端解耦 ([api_client.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/api_client.py)):
+4. 應用層與協定客戶端解耦 ([api_client.py](../gemini_flow/infrastructure/clients/gemini_api/api_client.py)):
    - 全面依賴抽象介面 `IHttpClient`，解開與具體 HTTP 實作的緊耦合。
-   - 串流解析器 [parser.py](file:///c:/Users/JasonHong/Desktop/CODE/_Project/GeminiFlow/gemini_flow/infrastructure/clients/gemini_api/parser.py) 穩定過濾換行與會話更新標記。
+   - 串流解析器 [parser.py](../gemini_flow/infrastructure/clients/gemini_api/parser.py) 穩定過濾換行與會話更新標記。
 
 ### 7.2 延遲根本原因之深層抓包驗證（Tarpit Queue 與 Botguard 機制）
 

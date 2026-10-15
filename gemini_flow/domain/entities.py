@@ -22,6 +22,12 @@ class ChatRequest(BaseModel):
     def model_spec(self) -> ModelSpec:
         return ModelSpec.resolve(self.model, self.thinking)
 
+    @property
+    def effective_prompt(self) -> str:
+        if self.system_prompt:
+            return f"System:\n{self.system_prompt}\n\nUser:\n{self.prompt}"
+        return self.prompt
+
 
 class SessionData(BaseModel):
     session_id: str
@@ -53,3 +59,10 @@ class GeminiTokens(BaseModel):
     snlm0e: str
     sid: Optional[str] = None
     server_bl: Optional[str] = None
+
+
+class BotguardToken(BaseModel):
+    token: str
+    salt: str
+    created_at: float = Field(default_factory=time.time)
+

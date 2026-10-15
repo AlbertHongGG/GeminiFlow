@@ -15,6 +15,8 @@ class GeminiPayloadBuilder:
     # Named indices in inner_req
     IDX_PROMPT_BLOCK = 0
     IDX_LANGUAGE = 1
+    IDX_BOTGUARD_TOKEN = 3
+    IDX_BOTGUARD_SALT = 4
     IDX_TURN_INDEX = 17
     IDX_CAPABILITIES = 30
     IDX_REQ_UUID = 59
@@ -34,6 +36,8 @@ class GeminiPayloadBuilder:
         conversation_id: Optional[str] = None,
         continuation_token: Optional[str] = None,
         turn_index: int = 0,
+        botguard_token: Optional[str] = None,
+        botguard_salt: Optional[str] = None,
     ):
         self.prompt = prompt
         if system_prompt:
@@ -46,6 +50,8 @@ class GeminiPayloadBuilder:
         self.conversation_id = conversation_id
         self.continuation_token = continuation_token
         self.turn_index = turn_index
+        self.botguard_token = botguard_token
+        self.botguard_salt = botguard_salt
 
     def _build_image_list(self) -> Optional[List[Any]]:
         if not self.uploads:
@@ -93,6 +99,12 @@ class GeminiPayloadBuilder:
         # 1: Language block
         arr[self.IDX_LANGUAGE] = [self.language]
 
+        # 3 & 4: Botguard attestation token and random salt
+        if self.botguard_token is not None:
+            arr[self.IDX_BOTGUARD_TOKEN] = self.botguard_token
+        if self.botguard_salt is not None:
+            arr[self.IDX_BOTGUARD_SALT] = self.botguard_salt
+
         # Standard static protocol flags
         arr[6] = [0]
         arr[7] = 1
@@ -134,9 +146,11 @@ class GeminiPayloadBuilder:
     def build_post_data(self, at_token: str) -> Dict[str, str]:
         """
         Builds the form postData payload containing 'at' and 'f.req'.
+        Uses ensure_ascii=False to exactly mirror browser JSON.stringify UTF-8 behavior.
         """
         inner = self.build_inner_array()
+        inner_json = json.dumps(inner, separators=(",", ":"), ensure_ascii=False)
         return {
             "at": at_token,
-            "f.req": json.dumps([None, json.dumps(inner, separators=(",", ":"))], separators=(",", ":")),
+            "f.req": json.dumps([None, inner_json], separators=(",", ":"), ensure_ascii=False),
         }

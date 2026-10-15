@@ -29,3 +29,16 @@ class RateLimitError(GeminiFlowError):
 class RequireManualLoginError(AuthenticationError):
     """Raised when the user needs to manually login (e.g. captcha, terms of service)."""
     pass
+
+class AttestationError(GeminiFlowError):
+    """Raised when Botguard attestation or token signing fails."""
+    pass
+
+class ChallengeFetchError(AttestationError):
+    """Raised when fetching Botguard challenge from Waa server fails."""
+    pass
+
+class VmExecutionError(AttestationError):
+    """Raised when executing the Botguard VM in the JS engine fails."""
+    pass
+

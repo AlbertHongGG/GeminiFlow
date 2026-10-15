@@ -244,8 +244,23 @@ async def init_app_state(app: web.Application):
     
     # Ensure image directory exists
     config.image_output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize shared ChatService with cached attestation signer
+    cookie_store = FileCookieStore(config.cookies_dir)
+    auth_service = GeminiAuthService(config.cookies_dir, cookie_store, app[HTTP_CLIENT_KEY], app[BROWSER_KEY])
+    chat_provider = GeminiAPIClient(app[HTTP_CLIENT_KEY])
+    session_store = FileSessionStore(config.sessions_dir)
+    image_downloader = GeminiImageDownloader(config.image_output_dir, app[BROWSER_KEY])
+
+    app[CHAT_SERVICE_KEY] = ChatService(
+        auth_service=auth_service,
+        chat_provider=chat_provider,
+        session_store=session_store,
+        http_client=app[HTTP_CLIENT_KEY],
+        image_downloader=image_downloader,
+    )
     
-    logger.info("Application state initialized.")
+    logger.info("Application state initialized with shared ChatService.")
 
 async def cleanup_app_state(app: web.Application):
     if BROWSER_KEY in app:

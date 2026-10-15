@@ -19,6 +19,9 @@ class StreamParser:
         if isinstance(value, list):
             for item in value:
                 yield from self.flatten_strings(item)
+        if isinstance(value, dict):
+            for v in value.values():
+                yield from self.flatten_strings(v)
 
     def extract_content(self, response_part: List) -> Optional[str]:
         try:
@@ -64,7 +67,17 @@ class StreamParser:
         except Exception:
             pass
 
-        if conv_id and not continuation_token:
+        # Check response_part[2] dict (Google wire standard: response_part[2]['26'] is continuation_token)
+        if not continuation_token:
+            try:
+                if len(response_part) > 2 and isinstance(response_part[2], dict):
+                    tok = response_part[2].get("26")
+                    if isinstance(tok, str) and tok.startswith("Aw"):
+                        continuation_token = tok
+            except Exception:
+                pass
+
+        if not continuation_token:
             try:
                 for s in self.flatten_strings(response_part):
                     if len(s) >= 28 and s.startswith("Aw"):
@@ -116,6 +129,31 @@ class StreamParser:
             text=delta,
             conversation_id=conv_id,
             continuation_token=continuation_token,
+        )
+
+    def is_end_of_stream(self, raw_line: str) -> bool:
+        """
+        Detects Google's StreamGenerate stream termination markers.
+        Google streams conclude with [["e", ...]] or [["di", ...]].
+        """
+        stripped = raw_line.strip()
+        if not stripped:
+            return False
+
+        try:
+            line = json.loads(raw_line)
+            if isinstance(line, list):
+                for item in line:
+                    if isinstance(item, list) and item and item[0] in ("e", "di"):
+                        return True
+        except Exception:
+            pass
+
+        return (
+            stripped.startswith('[["e",')
+            or stripped.startswith('[["di",')
+            or ',"di",null' in stripped
+            or '["di",null' in stripped
         )
 
     def extract_image_candidates(self, raw_line: str) -> Sequence[str]:

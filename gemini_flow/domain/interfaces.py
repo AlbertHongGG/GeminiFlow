@@ -1,7 +1,7 @@
 import abc
 from typing import AsyncGenerator, List, Optional, Any, Dict
 from pathlib import Path
-from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens
+from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, BotguardToken
 
 class IHttpResponse(abc.ABC):
     @property
@@ -77,6 +77,16 @@ class IAuthService(abc.ABC):
     async def get_cookies_dict(self) -> list[dict]:
         """
         Returns the current stored cookies in a format suitable for the HTTP client.
+        """
+        pass
+
+class ITokenSigner(abc.ABC):
+    @abc.abstractmethod
+    async def sign(
+        self, prompt: str, conversation_id: Optional[str] = None
+    ) -> BotguardToken:
+        """
+        Generates a cryptographic attestation token and salt for the given prompt and conversation.
         """
         pass
 

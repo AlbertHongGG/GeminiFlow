@@ -4,26 +4,29 @@ from typing import Optional, Union
 from pydantic import BaseModel
 
 class ModelFamily(str, Enum):
+    FLASH_LITE = "flash-lite"
     FLASH = "flash"
     PRO = "pro"
     ARGON = "argon"
 
     @property
     def model_id(self) -> int:
-        if self == ModelFamily.FLASH:
+        if self in (ModelFamily.FLASH, ModelFamily.FLASH_LITE):
             return 1
         if self == ModelFamily.PRO:
-            return 3
+            return 6
         if self == ModelFamily.ARGON:
             return 8
         return 1
 
     @property
     def model_hash(self) -> str:
+        if self == ModelFamily.FLASH_LITE:
+            return "fbb127bbb056c959"
         if self == ModelFamily.FLASH:
             return "56fdd199312815e2"
         if self == ModelFamily.PRO:
-            return "e6fa609c3fa255c0"
+            return "8c46e95b1a07cecc"
         if self == ModelFamily.ARGON:
             return "95a4c0abcba24364"
         return "56fdd199312815e2"
@@ -84,6 +87,8 @@ class ModelSpec(BaseModel):
         # Determine family strictly from model identity
         if any(k in lower for k in ("argon", "gemini-4", "gemini4")):
             family = ModelFamily.ARGON
+        elif "lite" in lower:
+            family = ModelFamily.FLASH_LITE
         elif "pro" in lower:
             family = ModelFamily.PRO
         else:

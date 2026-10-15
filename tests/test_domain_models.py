@@ -4,10 +4,12 @@ from gemini_flow.domain.entities import ChatRequest, SessionData
 
 class TestDomainModels(unittest.TestCase):
     def test_model_family(self):
+        self.assertEqual(ModelFamily.FLASH_LITE.model_id, 1)
+        self.assertEqual(ModelFamily.FLASH_LITE.model_hash, "fbb127bbb056c959")
         self.assertEqual(ModelFamily.FLASH.model_id, 1)
         self.assertEqual(ModelFamily.FLASH.model_hash, "56fdd199312815e2")
-        self.assertEqual(ModelFamily.PRO.model_id, 3)
-        self.assertEqual(ModelFamily.PRO.model_hash, "e6fa609c3fa255c0")
+        self.assertEqual(ModelFamily.PRO.model_id, 6)
+        self.assertEqual(ModelFamily.PRO.model_hash, "8c46e95b1a07cecc")
         self.assertEqual(ModelFamily.ARGON.model_id, 8)
         self.assertEqual(ModelFamily.ARGON.model_hash, "95a4c0abcba24364")
 
@@ -34,11 +36,11 @@ class TestDomainModels(unittest.TestCase):
         self.assertEqual(spec.thinking, ThinkingLevel.MEDIUM)
         self.assertEqual(spec.thinking_level, 4)
 
-        # Gemini 3 Pro with high thinking
-        spec = ModelSpec.resolve("gemini-3-pro", thinking="high")
+        # Gemini 3.1 Pro with high thinking
+        spec = ModelSpec.resolve("gemini-3.1-pro", thinking="high")
         self.assertEqual(spec.family, ModelFamily.PRO)
         self.assertEqual(spec.thinking, ThinkingLevel.HIGH)
-        self.assertEqual(spec.model_id, 3)
+        self.assertEqual(spec.model_id, 6)
         self.assertEqual(spec.thinking_level, 2)
 
         # Gemini 4 Argon with low/medium/high thinking
@@ -76,6 +78,13 @@ class TestDomainModels(unittest.TestCase):
         self.assertEqual(req.model_spec.thinking, ThinkingLevel.MEDIUM)
         self.assertEqual(req.model_spec.model_id, 8)
         self.assertEqual(req.model_spec.thinking_level, 4)
+
+    def test_chat_request_effective_prompt(self):
+        req_plain = ChatRequest(prompt="簡單問題")
+        self.assertEqual(req_plain.effective_prompt, "簡單問題")
+
+        req_with_sys = ChatRequest(prompt="問題內容", system_prompt="繁體中文專家")
+        self.assertEqual(req_with_sys.effective_prompt, "System:\n繁體中文專家\n\nUser:\n問題內容")
 
 if __name__ == "__main__":
     unittest.main()

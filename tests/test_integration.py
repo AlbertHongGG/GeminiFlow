@@ -63,8 +63,8 @@ class TestIntegration(unittest.TestCase):
 
         self.assertEqual(proto.params["pageId"], "none")
         self.assertEqual(proto.params["bl"], REQUEST_BL_PARAM)
-        self.assertEqual(h525[4], "e6fa609c3fa255c0")
-        self.assertEqual(h525[14], 3)
+        self.assertEqual(h525[4], "8c46e95b1a07cecc")
+        self.assertEqual(h525[14], 6)
         self.assertEqual(h525[15], 1)
         self.assertEqual(inner[0][0], "第二次測試")
         self.assertIsNone(inner[2])
@@ -73,7 +73,7 @@ class TestIntegration(unittest.TestCase):
             inner[71],
             ["c_fb6da9be329112e7", None, None, None, None, None, None, "AwAAAAAAAAAQANM7mBjXKZS5cPttExo"],
         )
-        self.assertEqual(inner[79], 3)
+        self.assertEqual(inner[79], 6)
         self.assertEqual(inner[80], 1)
         self.assertEqual(inner[96], 1)
 

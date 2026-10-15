@@ -140,5 +140,35 @@ class TestProtocolEngine(unittest.TestCase):
         h525 = json.loads(proto.headers["x-goog-ext-525001261-jspb"])
         self.assertEqual(h525[17], ["boq_gemini-web-uiserver_20261012.19_p1"])
 
+    def test_payload_builder_with_botguard_tokens(self):
+        spec = ModelSpec.resolve("gemini-3.8-flash", thinking="low")
+        builder = GeminiPayloadBuilder(
+            prompt="測試 Botguard 注入",
+            system_prompt=None,
+            language="zh-TW",
+            model_spec=spec,
+            req_uuid="REQ-UUID-BG",
+            botguard_token="!TEST_BOTGUARD_TOKEN_STRING",
+            botguard_salt="a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        )
+        arr = builder.build_inner_array()
+        self.assertEqual(arr[3], "!TEST_BOTGUARD_TOKEN_STRING")
+        self.assertEqual(arr[4], "a1b2c3d4e5f60718293a4b5c6d7e8f90")
+
+    def test_protocol_engine_with_botguard_tokens(self):
+        engine = GeminiProtocolEngine(server_bl="boq_gemini-web-uiserver_20261012.19_p1")
+        tokens = GeminiTokens(snlm0e="TEST_SNLM0E", sid="123")
+        req = ChatRequest(prompt="測試引擎注入")
+        proto = engine.build_request(
+            req,
+            tokens,
+            botguard_token="!ENGINE_BG_TOKEN",
+            botguard_salt="0123456789abcdef0123456789abcdef",
+        )
+        f_req = json.loads(proto.data["f.req"])
+        inner = json.loads(f_req[1])
+        self.assertEqual(inner[3], "!ENGINE_BG_TOKEN")
+        self.assertEqual(inner[4], "0123456789abcdef0123456789abcdef")
+
 if __name__ == "__main__":
     unittest.main()

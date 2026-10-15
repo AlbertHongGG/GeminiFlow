@@ -7,6 +7,13 @@ from typing import Optional, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from gemini_flow.domain.entities import ChatRequest, ImagePayload
 from gemini_flow.application.chat_service import ChatService
 from gemini_flow.config import AppConfig

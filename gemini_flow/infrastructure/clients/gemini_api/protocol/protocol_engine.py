@@ -30,6 +30,8 @@ class GeminiProtocolEngine:
         tokens: GeminiTokens,
         session_data: Optional[SessionData] = None,
         uploads: Optional[Sequence[Tuple[str, str]]] = None,
+        botguard_token: Optional[str] = None,
+        botguard_salt: Optional[str] = None,
     ) -> ProtocolRequest:
         req_uuid = str(uuid.uuid4()).upper()
         model_spec = request.model_spec
@@ -60,8 +62,8 @@ class GeminiProtocolEngine:
         continuation_token = session_data.continuation_token if session_data else None
 
         payload_builder = GeminiPayloadBuilder(
-            prompt=request.prompt,
-            system_prompt=request.system_prompt,
+            prompt=request.effective_prompt,
+            system_prompt=None,
             language=request.language,
             model_spec=model_spec,
             req_uuid=req_uuid,
@@ -69,6 +71,8 @@ class GeminiProtocolEngine:
             conversation_id=conversation_id,
             continuation_token=continuation_token,
             turn_index=turn_index,
+            botguard_token=botguard_token,
+            botguard_salt=botguard_salt,
         )
         data = payload_builder.build_post_data(at_token=tokens.snlm0e)
 
