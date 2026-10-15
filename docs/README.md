@@ -36,10 +36,10 @@ Google 網頁端透過一組雙重識別機制來將使用者的推理請求精�
 2. **Model Hash**：16 位十六進位字串，置於 `x-goog-ext-525001261-jspb[4]` 擴展標頭中，代表 Google GFE（Google Frontend Edge）負載平衡通道簽名。
 
 #### 異動機制與觸發情境
-當 Google 推出新模型（例如由 Gemini 1.5 升級為 3.1 Pro，或更新 3.8 Flash、4 Argon）時，後端通常會指派全新的 ID 與通道 Hash。
+當 Google 推出新模型（例如由 Gemini 1.5 升級為 3.1 Pro，或更新 3.5 Flash-Lite、3.8 Flash、4 Argon）時，後端通常會指派全新的 ID 與通道 Hash。
 - **降級現象**: 若持續發送舊版 ID（如舊版 Pro 的 ID `3` 與 Hash `e6fa609c3fa255c0`），Google 會將請求導向舊版受限通道。當輸入需要深度推理或寫程式碼的任務時，後端安全檢查員會直接攔截並返回罐頭拒答：
   `這個要求已經超出我的能力範圍，我只能產生文字。`
-- **對齊標準**: 必須將其更新至現代生產環境值（如 3.1 Pro 改為 ID `6` 與 Hash `8c46e95b1a07cecc`）。
+- **對齊標準**: 必須將其更新至現代生產環境值（如 3.1 Pro 改為 ID `6` 與 Hash `8c46e95b1a07cecc`；3.5 Flash-Lite 為 ID `1` 與 Hash `fbb127bbb056c959`）。
 
 #### 檢查與排查步驟
 1. 於 Chrome 瀏覽器開啟 `https://gemini.google.com/app`，開啟 DevTools Network 分頁。
@@ -308,13 +308,16 @@ for e in data['log']['entries']:
 ### 步驟 5: 端到端 CLI 矩陣測試
 依序執行各模型聊天驗證：
 ```powershell
-# 1. 測試 Flash 模型
+# 1. 測試 Flash-Lite 模型 (驗證 Model ID 1 與 Hash fbb127bbb056c959)
+.\.venv\Scripts\python.exe cli.py chat "請輸出單詞: OK" -m flash-lite
+
+# 2. 測試 Flash 模型 (驗證 Model ID 1 與 Hash 56fdd199312815e2)
 .\.venv\Scripts\python.exe cli.py chat "請輸出單詞: OK" -m flash
 
-# 2. 測試 Pro 模型 (驗證 Model ID 6 與 Hash 8c46e95b1a07cecc)
+# 3. 測試 Pro 模型 (驗證 Model ID 6 與 Hash 8c46e95b1a07cecc)
 .\.venv\Scripts\python.exe cli.py chat "請用一句話介紹自己" -m pro
 
-# 3. 測試 Argon 模型 (驗證 Thinking Mode 與 Model ID 8)
+# 4. 測試 Argon 模型 (驗證 Thinking Mode 與 Model ID 8)
 .\.venv\Scripts\python.exe cli.py chat "1+1等於多少" -m argon
 ```
 所有呼叫必須在 **4 ~ 8 秒內完成串流輸出並正常結束**。
