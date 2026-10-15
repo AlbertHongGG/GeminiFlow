@@ -55,6 +55,45 @@ class TestGeminiAPIClient(unittest.IsolatedAsyncioTestCase):
         text_chunks = [c.text for c in chunks if c.text]
         self.assertTrue(len(text_chunks) > 0)
 
+    async def test_stream_generate_with_image_upload(self):
+        fake_http = FakeHttpClient(stream_chunks=[SAMPLE_TEXT_LINE + "\n"])
+        fake_signer = FakeTokenSigner()
+        from tests.fakes import FakeImageUploader
+        from gemini_flow.domain.entities import ImagePayload
+
+        fake_uploader = FakeImageUploader(default_ref_prefix="/contrib_service/ttl_1d/uploaded_ref_")
+        client = GeminiAPIClient(
+            http_client=fake_http,
+            token_signer=fake_signer,
+            image_uploader=fake_uploader,
+        )
+
+        req = ChatRequest(
+            prompt="請描述圖片",
+            images=[ImagePayload(data=b"imgbytes", filename="pic.jpg")],
+        )
+        tokens = GeminiTokens(snlm0e="TEST_SNLM0E")
+
+        chunks = []
+        async for chunk in client.stream_generate(req, tokens):
+            chunks.append(chunk)
+
+        # 1. Verify image uploader was invoked
+        self.assertEqual(len(fake_uploader.uploaded_images), 1)
+        self.assertEqual(fake_uploader.uploaded_images[0].filename, "pic.jpg")
+
+        # 2. Verify f.req contained image reference from uploader
+        self.assertEqual(len(fake_http.post_stream_calls), 1)
+        call_url, call_params, call_data, call_headers = fake_http.post_stream_calls[0]
+        f_req = json.loads(call_data["f.req"])
+        inner = json.loads(f_req[1])
+        # Prompt block is at inner[0], images at inner[0][3]
+        image_list = inner[0][3]
+        self.assertIsNotNone(image_list)
+        self.assertEqual(len(image_list), 1)
+        self.assertEqual(image_list[0][0][0], "/contrib_service/ttl_1d/uploaded_ref_1")
+        self.assertEqual(image_list[0][1], "pic.jpg")
+
     def test_api_client_proxy_propagation(self):
         fake_http = FakeHttpClient()
         fake_http.proxy = "http://proxy.test:8080"

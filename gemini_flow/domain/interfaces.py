@@ -1,7 +1,7 @@
 import abc
-from typing import AsyncGenerator, List, Optional, Any, Dict
+from typing import AsyncGenerator, List, Optional, Any, Dict, Mapping
 from pathlib import Path
-from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, BotguardToken
+from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, BotguardToken, ImagePayload
 
 class IHttpResponse(abc.ABC):
     @property
@@ -11,7 +11,7 @@ class IHttpResponse(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def headers(self) -> Dict[str, str]:
+    def headers(self) -> Mapping[str, str]:
         pass
 
     @abc.abstractmethod
@@ -113,6 +113,15 @@ class ISessionStore(abc.ABC):
     @abc.abstractmethod
     def save(self, data: SessionData) -> None:
         """Saves session data."""
+        pass
+
+class IImageUploader(abc.ABC):
+    @abc.abstractmethod
+    async def upload_images(self, images: List[ImagePayload]) -> List[tuple[str, str]]:
+        """
+        Uploads images to the Gemini storage service.
+        Returns a list of (upload_ref, filename) tuples.
+        """
         pass
 
 class IImageDownloader(abc.ABC):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
-from typing import Optional, Dict, Any, AsyncGenerator
+from collections.abc import Mapping
+from typing import Optional, Dict, Any, AsyncGenerator, Iterator, Tuple
 from curl_cffi.requests import AsyncSession, Response
 from curl_cffi.requests.exceptions import RequestException, Timeout, CurlError
 
@@ -10,13 +11,55 @@ from gemini_flow.domain.exceptions import NetworkError, TokenExpiredError, RateL
 
 logger = logging.getLogger("gemini_flow.http_client")
 
+
+class CaseInsensitiveDict(Mapping[str, str]):
+    """
+    Case-insensitive mapping for HTTP headers conforming to RFC 9110 Section 5.1.
+    Preserves original casing on iteration while supporting case-insensitive lookup and get.
+    """
+    def __init__(self, data: Optional[Mapping[str, str] | Dict[str, str]] = None):
+        self._store: Dict[str, Tuple[str, str]] = {}
+        if data:
+            for k, v in data.items():
+                self._store[k.lower()] = (str(k), str(v))
+
+    def __getitem__(self, key: str) -> str:
+        return self._store[key.lower()][1]
+
+    def __iter__(self) -> Iterator[str]:
+        return (orig_key for orig_key, _ in self._store.values())
+
+    def __len__(self) -> int:
+        return len(self._store)
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and key.lower() in self._store
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __repr__(self) -> str:
+        return f"CaseInsensitiveDict({dict(self._store.values())})"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Mapping):
+            other_dict = {k.lower(): v for k, v in other.items()}
+            our_dict = {k: v for k, (_, v) in self._store.items()}
+            return our_dict == other_dict
+        return False
+
+
 class CurlHttpResponse(IHttpResponse):
     """
     Lightweight, typed wrapper around curl_cffi Response implementing IHttpResponse.
-    Supports await resp.text() for async caller compatibility.
+    Supports await resp.text() for async caller compatibility and RFC 9110 case-insensitive headers.
     """
     def __init__(self, response: Response):
         self._response = response
+        self._headers = CaseInsensitiveDict(self._response.headers)
 
     @property
     def status_code(self) -> int:
@@ -27,8 +70,8 @@ class CurlHttpResponse(IHttpResponse):
         return self._response.status_code
 
     @property
-    def headers(self) -> Dict[str, str]:
-        return dict(self._response.headers)
+    def headers(self) -> Mapping[str, str]:
+        return self._headers
 
     @property
     def content(self) -> bytes:

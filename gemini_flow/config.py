@@ -4,7 +4,7 @@ from pathlib import Path
 # URLs
 GEMINI_BASE_URL = "https://gemini.google.com"
 GEMINI_REQUEST_URL = "https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
-UPLOAD_IMAGE_URL = "https://content-push.googleapis.com/upload/"
+UPLOAD_IMAGE_URL = "https://push.clients6.google.com/upload/"
 
 # Protocol constants
 REQUEST_BL_PARAM = "boq_gemini-web-uiserver_20261012.19_p1"
@@ -36,16 +36,13 @@ DEFAULT_HTTP_HEADERS = {
 }
 
 UPLOAD_IMAGE_HEADERS = {
-    "authority": "content-push.googleapis.com",
+    "authority": "push.clients6.google.com",
     "accept": "*/*",
-    "accept-language": "en-US,en;q=0.7",
-    "authorization": "Basic c2F2ZXM6cyNMdGhlNmxzd2F2b0RsN3J1d1U=",
+    "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
     "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
     "origin": "https://gemini.google.com",
     "push-id": "feeds/mcudyrk2a4khkz",
     "referer": "https://gemini.google.com/",
-    "x-goog-upload-command": "start",
-    "x-goog-upload-header-content-length": "",
     "x-goog-upload-protocol": "resumable",
     "x-tenant-id": "bard-storage",
 }

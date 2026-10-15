@@ -1,10 +1,11 @@
 import logging
 from typing import AsyncGenerator, Optional, List, Tuple
-from gemini_flow.domain.interfaces import IChatProvider, IHttpClient, ITokenSigner
+from gemini_flow.domain.interfaces import IChatProvider, IHttpClient, ITokenSigner, IImageUploader
 from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, ImagePayload, BotguardToken
 from gemini_flow.domain.exceptions import NetworkError, ProtocolError, AttestationError
-from gemini_flow.config import UPLOAD_IMAGE_HEADERS, UPLOAD_IMAGE_URL, GEMINI_REQUEST_URL, REQUEST_BL_PARAM
+from gemini_flow.config import GEMINI_REQUEST_URL, REQUEST_BL_PARAM
 from gemini_flow.infrastructure.attestation import EmbeddedV8TokenSigner
+from gemini_flow.infrastructure.clients.gemini_uploader import GeminiImageUploader
 from .protocol import GeminiProtocolEngine
 from .parser import StreamParser
 
@@ -16,37 +17,17 @@ class GeminiAPIClient(IChatProvider):
         http_client: IHttpClient,
         server_bl: str = REQUEST_BL_PARAM,
         token_signer: Optional[ITokenSigner] = None,
+        image_uploader: Optional[IImageUploader] = None,
         proxy: Optional[str] = None,
     ):
         self.http_client = http_client
         self.protocol_engine = GeminiProtocolEngine(server_bl=server_bl)
         effective_proxy = proxy or getattr(http_client, "proxy", None)
         self.token_signer = token_signer if token_signer is not None else EmbeddedV8TokenSigner(proxy=effective_proxy)
+        self.image_uploader = image_uploader if image_uploader is not None else GeminiImageUploader(http_client)
 
     async def upload_images(self, images: List[ImagePayload]) -> List[Tuple[str, str]]:
-        uploads = []
-        for img in images:
-            try:
-                headers = {
-                    **UPLOAD_IMAGE_HEADERS,
-                    "size": str(len(img.data)),
-                    "x-goog-upload-command": "start",
-                }
-                data_name = f"File name: {img.filename}" if img.filename else None
-                resp = await self.http_client.post_form(UPLOAD_IMAGE_URL, data=data_name, headers=headers)
-                upload_url = resp.headers.get("X-Goog-Upload-Url")
-                if not upload_url:
-                    raise NetworkError("Missing X-Goog-Upload-Url")
-                
-                headers["x-goog-upload-command"] = "upload, finalize"
-                headers["X-Goog-Upload-Offset"] = "0"
-                resp = await self.http_client.post_form(upload_url, data=img.data, headers=headers)
-                upload_ref = await resp.text()
-                uploads.append((upload_ref, img.filename))
-            except Exception as e:
-                logger.error(f"Image upload failed: {e}")
-                raise NetworkError(f"Image upload failed: {e}") from e
-        return uploads
+        return await self.image_uploader.upload_images(images)
 
     async def stream_generate(
         self, 
@@ -58,8 +39,7 @@ class GeminiAPIClient(IChatProvider):
         # 1. Upload images if attached
         uploads = []
         if request.images:
-            logger.info(f"Uploading {len(request.images)} images...")
-            uploads = await self.upload_images(request.images)
+            uploads = await self.image_uploader.upload_images(request.images)
 
         # 2. Cryptographic Botguard Attestation Signing (Content-Bound)
         botguard_token = None

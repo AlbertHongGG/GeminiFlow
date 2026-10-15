@@ -1,10 +1,12 @@
+from collections.abc import Mapping
 from typing import Dict, Any, Optional, AsyncGenerator
 from gemini_flow.domain.interfaces import IHttpClient, IHttpResponse
+from gemini_flow.infrastructure.clients.http_client import CaseInsensitiveDict
 
 class FakeHttpResponse(IHttpResponse):
-    def __init__(self, status_code: int = 200, headers: Optional[Dict[str, str]] = None, content: bytes = b""):
+    def __init__(self, status_code: int = 200, headers: Optional[Mapping[str, str]] = None, content: bytes = b""):
         self._status_code = status_code
-        self._headers = headers or {}
+        self._headers = CaseInsensitiveDict(headers or {})
         self._content = content
 
     @property
@@ -16,7 +18,7 @@ class FakeHttpResponse(IHttpResponse):
         return self._status_code
 
     @property
-    def headers(self) -> Dict[str, str]:
+    def headers(self) -> Mapping[str, str]:
         return self._headers
 
     @property
