@@ -86,5 +86,36 @@ class TestGeminiWebChannelClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.token_signer._waa_client._proxy, "http://proxy.test:8080")
         client.token_signer.close()
 
+    async def test_stream_generate_upstream_failure_fail_fast(self):
+        import asyncio
+        from gemini_flow.domain.exceptions import NetworkError
+
+        class FailingPostHttpClient(FakeHttpClient):
+            def __init__(self):
+                super().__init__()
+                self.post_count = 0
+
+            async def post(self, url, params=None, data=None, headers=None):
+                self.post_count += 1
+                if self.post_count > 1:  # First is count=0 handshake, second is ofs=0 metadata
+                    raise NetworkError("Simulated upstream 400 failure")
+                return await super().post(url, params=params, data=data, headers=headers)
+
+            async def get_stream(self, url, params=None, headers=None):
+                # Simulates downstream GET hanging indefinitely when upstream rejected
+                await asyncio.Event().wait()
+                yield "never reached"
+
+        fake_http = FailingPostHttpClient()
+        fake_signer = FakeTokenSigner()
+        client = GeminiWebChannelClient(http_client=fake_http, token_signer=fake_signer)
+        req = ChatRequest(prompt="測試上行中斷")
+        creds = GeminiCredentials(snlm0e="TEST")
+
+        with self.assertRaises(NetworkError) as ctx:
+            async for _ in client.stream_generate(req, creds):
+                pass
+        self.assertIn("Simulated upstream 400 failure", str(ctx.exception))
+
 if __name__ == "__main__":
     unittest.main()

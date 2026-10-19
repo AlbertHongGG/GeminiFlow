@@ -37,13 +37,17 @@ class SessionData(BaseModel):
     updated_at: float = Field(default_factory=time.time)
 
     @property
+    def is_continuation(self) -> bool:
+        return bool(self.turn_index > 0 and self.conversation_id and self.continuation_token)
+
+    @property
     def is_new(self) -> bool:
-        return self.turn_index == 0 or not self.conversation_id
+        return not self.is_continuation
 
     def advance_turn(self, continuation_token: Optional[str] = None) -> None:
-        self.turn_index += 1
         if continuation_token:
             self.continuation_token = continuation_token
+            self.turn_index += 1
         self.updated_at = time.time()
 
 

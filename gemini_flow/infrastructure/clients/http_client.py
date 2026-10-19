@@ -187,6 +187,10 @@ class HttpClient(IHttpClient):
                     continue
                 buffer.extend(chunk)
                 while buffer:
+                    while buffer and buffer[:1] in (b"\r", b"\n", b" ", b"\t"):
+                        del buffer[0]
+                    if not buffer:
+                        break
                     match = re.search(rb"^(\d+)\s*\n", buffer)
                     if match:
                         header_len = match.end()
@@ -195,7 +199,7 @@ class HttpClient(IHttpClient):
                         if len(buffer) < total_needed:
                             break
                         frame_bytes = bytes(buffer[header_len:total_needed])
-                        buffer = buffer[total_needed:]
+                        del buffer[:total_needed]
                         while buffer and buffer[:1] in (b"\r", b"\n"):
                             del buffer[0]
                         yield frame_bytes.decode("utf-8", errors="replace")
@@ -203,7 +207,7 @@ class HttpClient(IHttpClient):
                         newline_pos = buffer.find(b"\n")
                         if newline_pos != -1:
                             frame_bytes = bytes(buffer[:newline_pos])
-                            buffer = buffer[newline_pos + 1:]
+                            del buffer[:newline_pos + 1]
                             decoded = frame_bytes.decode("utf-8", errors="replace").strip()
                             if decoded:
                                 yield decoded
@@ -236,34 +240,6 @@ class HttpClient(IHttpClient):
         except (RequestException, Timeout, CurlError) as e:
             logger.error(f"POST {url} failed: {e}")
             raise NetworkError(f"Network request failed: {e}") from e
-
-    async def post_stream(
-        self,
-        url: str,
-        params: Dict[str, str],
-        data: Dict[str, str],
-        headers: Optional[Dict[str, str]] = None,
-    ) -> AsyncGenerator[str, None]:
-        logger.debug(f"POST STREAM {url}")
-        req_headers = self._prepare_headers(headers)
-        try:
-            resp = await self._get_session().post(
-                url,
-                params=params,
-                data=data,
-                headers=req_headers,
-                stream=True,
-                proxy=self.proxy,
-                timeout=self.timeout,
-            )
-            self._check_status(resp.status_code, url)
-            async for chunk in resp.aiter_lines():
-                line = chunk.decode("utf-8", errors="ignore").rstrip("\r\n")
-                if line:
-                    yield line + "\n"
-        except (RequestException, Timeout, CurlError) as e:
-            logger.error(f"POST STREAM {url} failed: {e}")
-            raise NetworkError(f"Network streaming request failed: {e}") from e
 
     async def post_form(
         self,

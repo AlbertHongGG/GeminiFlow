@@ -148,17 +148,48 @@ class GeminiWebChannelClient(IChatProvider):
         received_chunks = 0
 
         logger.debug("Listening to downstream WebChannel stream...")
+        stream_iter = None
+        next_chunk_task: Optional[asyncio.Task] = None
         try:
             stream_gen = self.http_client.get_stream(GEMINI_PROCESS_SESSION_URL, params=stream_params)
             ready_evt.set()
+            stream_iter = stream_gen.__aiter__()
 
-            async for chunk in stream_gen:
-                if not chunk or not chunk.strip():
+            while True:
+                if next_chunk_task is None:
+                    next_chunk_task = asyncio.create_task(stream_iter.__anext__())
+
+                if not push_task.done():
+                    done, _ = await asyncio.wait(
+                        [next_chunk_task, push_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if push_task in done:
+                        push_exc = push_task.exception()
+                        if push_exc:
+                            if not next_chunk_task.done():
+                                next_chunk_task.cancel()
+                            raise push_exc
+                else:
+                    push_exc = push_task.exception()
+                    if push_exc:
+                        if not next_chunk_task.done():
+                            next_chunk_task.cancel()
+                        raise push_exc
+                    await next_chunk_task
+
+                if not next_chunk_task.done():
                     continue
 
-                # Check upstream task health immediately
-                if push_task.done() and push_task.exception():
-                    raise push_task.exception()
+                try:
+                    chunk = next_chunk_task.result()
+                except StopAsyncIteration:
+                    next_chunk_task = None
+                    break
+                next_chunk_task = None
+
+                if not chunk or not chunk.strip():
+                    continue
 
                 received_chunks += 1
 
@@ -189,6 +220,7 @@ class GeminiWebChannelClient(IChatProvider):
                         conversation_id=current_conv_id,
                         continuation_token=current_cont_token,
                     )
+                    last_emitted_cont_token = current_cont_token
 
                 if delta.continuation_token or parser.is_end_of_stream(chunk):
                     if current_cont_token and current_cont_token != last_emitted_cont_token:
@@ -199,6 +231,14 @@ class GeminiWebChannelClient(IChatProvider):
                         last_emitted_cont_token = current_cont_token
                     break
         finally:
+            if next_chunk_task and not next_chunk_task.done():
+                next_chunk_task.cancel()
+                try:
+                    await next_chunk_task
+                except (asyncio.CancelledError, StopAsyncIteration):
+                    pass
+                except Exception:
+                    pass
             if not push_task.done():
                 push_task.cancel()
                 try:
@@ -232,7 +272,3 @@ class GeminiWebChannelClient(IChatProvider):
                 conversation_id=current_conv_id,
                 continuation_token=current_cont_token,
             )
-
-
-# Alias for backward migration if needed within this module
-WebChannelChatProvider = GeminiWebChannelClient

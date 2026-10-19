@@ -68,16 +68,6 @@ class IHttpClient(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def post_stream(
-        self,
-        url: str,
-        params: Dict[str, str],
-        data: Dict[str, str],
-        headers: Optional[Dict[str, str]] = None,
-    ) -> AsyncGenerator[str, None]:
-        pass
-
-    @abc.abstractmethod
     async def post_form(
         self,
         url: str,

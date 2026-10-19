@@ -39,15 +39,21 @@ class WebChannelStreamParser:
 
             def find_errors(node: Any) -> None:
                 if isinstance(node, dict):
-                    if "error" in node and isinstance(node["error"], dict):
+                    if "error" in node:
                         err = node["error"]
-                        code = err.get("code")
-                        msg = err.get("message") or str(err)
-                        if code == 401 or "UNAUTHENTICATED" in str(msg) or code == "401":
-                            raise AuthenticationError(f"WebChannel RPC error 401: {msg}")
-                        if code == 429 or "RESOURCE_EXHAUSTED" in str(msg) or code == "429":
-                            raise RateLimitError(f"WebChannel RPC error 429: {msg}")
-                        raise GeminiFlowError(f"WebChannel RPC error {code}: {msg}")
+                        if isinstance(err, dict):
+                            code = err.get("code")
+                            msg = err.get("message") or str(err)
+                        else:
+                            code = None
+                            msg = str(err)
+                        code_str = str(code) if code is not None else ""
+                        msg_str = str(msg)
+                        if code == 401 or code_str == "401" or "UNAUTHENTICATED" in msg_str:
+                            raise AuthenticationError(f"WebChannel RPC error 401: {msg_str}")
+                        if code == 429 or code_str == "429" or "RESOURCE_EXHAUSTED" in msg_str:
+                            raise RateLimitError(f"WebChannel RPC error 429: {msg_str}")
+                        raise GeminiFlowError(f"WebChannel RPC error {code_str or 'status'}: {msg_str}")
                     for v in node.values():
                         find_errors(v)
                 elif isinstance(node, list):

@@ -32,7 +32,6 @@ class WebChannelProtocolEngine:
 
     def __init__(self, default_server_bl: str = "boq_gemini-web-uiserver_20261016.00_p0"):
         self.default_server_bl = default_server_bl
-        self.session_uuid = str(uuid.uuid4()).upper()
 
     def plan_turn(
         self,
@@ -43,6 +42,10 @@ class WebChannelProtocolEngine:
         botguard_salt: Optional[str] = None,
         uploaded_images: Sequence[UploadedImageAttachment] = (),
     ) -> WebChannelRequestPlan:
+        session_uuid = (
+            session_data.session_id if session_data and session_data.session_id
+            else str(uuid.uuid4()).upper()
+        )
         req_uuid = str(uuid.uuid4()).upper()
         base_rid = random.randint(10000, 89000)
         effective_bl = credentials.server_bl or self.default_server_bl
@@ -50,7 +53,7 @@ class WebChannelProtocolEngine:
         # 1. Header Builder
         header_builder = WebChannelHeaderBuilder(
             model_spec=request.model_spec,
-            session_uuid=self.session_uuid,
+            session_uuid=session_uuid,
             req_uuid=req_uuid,
             server_bl=effective_bl,
         )
@@ -92,7 +95,7 @@ class WebChannelProtocolEngine:
         )
 
         return WebChannelRequestPlan(
-            session_uuid=self.session_uuid,
+            session_uuid=session_uuid,
             req_uuid=req_uuid,
             base_rid=base_rid,
             handshake_params=handshake_params,

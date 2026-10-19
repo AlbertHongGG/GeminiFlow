@@ -337,11 +337,11 @@ if recursive and length > 0 and not is_printable_ascii:
 ## 7. 驗證記錄與維護檢核 SOP
 
 ### 7.1 單元測試覆蓋
-全套測試套件涵蓋 Protobuf Wire 編解碼、標頭構建、多模態圖片注入、多輪狀態轉換、位元組分幀及錯誤訊框攔截：
+全套測試套件涵蓋 Protobuf Wire 編解碼、標頭構建、多模態圖片注入、多輪狀態轉換、位元組分幀、錯誤訊框攔截以及上行非同步異常即時中斷 (Fail-Fast)：
 ```bash
 .venv\Scripts\python.exe -m unittest discover tests
 ```
-> **執行結果**：`Ran 91 tests in 0.439s - OK`（100% 通過）。
+> **執行結果**：`Ran 92 tests in 0.516s - OK`（100% 通過）。
 
 ### 7.2 線上端到端驗證成果
 1. **單輪文字對話**：
@@ -364,3 +364,78 @@ if recursive and length > 0 and not is_printable_ascii:
 2. **`x-goog-ext-525001261-bin` 標頭解碼**：確認 `Tag 5` (Hash) 與 `Tag 15` (ID) 是否發生雜湊值更動。
 3. **`ofs=0` Protobuf Tag 97 狀態**：Turn 0 必須為 `0`，Turn > 0 必須為 `1`，且 `Tag 72` 必須同時存在 `Tag 1` (conv_id) 與 `Tag 8` (continuation_token)。
 4. **Scotty 上傳回應格式**：確認 `upload, finalize` 是否依然直接返回 `/contrib_service/ttl_1d/...`。
+
+---
+
+## 8. 非同步並發健壯性、狀態機保護與無狀態設計 (Concurrency & State Machine Hardening)
+
+為確保系統具備長期演進的高擴展性、維護性與正確性，架構進一步實施了以下五大工程硬化措施：
+
+### 8.1 上下行雙工非同步競態監控與即時中斷 (Fail-Fast Duplex Concurrency)
+在舊版簡單串流中，若上行任務（`_send_upstream_payloads`，發送 `ofs=0` 與 `ofs=1`）因憑證無效或封包參數錯誤被 Google 立即以 HTTP 400/401 拒絕，Google 伺服器**完全不會對下行 GET 串流發送任何資料**。
+若單純在下行 chunk 迭代迴圈內部檢查上行異常，程式將在 `stream_gen.__anext__()` 永久懸掛等待 TCP Socket 資料，直到 30~60 秒逾時。
+
+**現代化解法**：在 [`GeminiWebChannelClient`](../gemini_flow/infrastructure/clients/gemini_api/webchannel_client.py) 中採用非同步競態監控：
+```python
+stream_iter = stream_gen.__aiter__()
+while True:
+    if next_chunk_task is None:
+        next_chunk_task = asyncio.create_task(stream_iter.__anext__())
+
+    if not push_task.done():
+        done, _ = await asyncio.wait(
+            [next_chunk_task, push_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if push_task in done:
+            push_exc = push_task.exception()
+            if push_exc:
+                if not next_chunk_task.done():
+                    next_chunk_task.cancel()
+                raise push_exc  # 0 延遲即時拋出上行失敗
+    else:
+        # 上行任務已成功完成，回歸正常下行讀取
+        push_exc = push_task.exception()
+        if push_exc:
+            raise push_exc
+        await next_chunk_task
+```
+此機制達成 100% 事件反應式（Reactive）調度，在上行拋出異常的數毫秒內立刻取消下行監聽並向呼叫方拋出具體異常，徹底杜絕懸掛。
+
+### 8.2 領域實體與協議層狀態機保護 (Session Continuation Invariants)
+Google 10/20 協定嚴格要求：**只要 `Tag 97` 宣告為延續對話 (`1`)，`Tag 72` 內必須同時存在 `Tag 1` (Conversation ID) 與 `Tag 8` (Continuation Token)**。缺少任何一項均會引發伺服器拒絕 (HTTP 400)。
+
+1. **領域實體約束**：在 [`SessionData`](../gemini_flow/domain/entities.py) 中明確定義：
+   ```python
+   @property
+   def is_continuation(self) -> bool:
+       return bool(self.turn_index > 0 and self.conversation_id and self.continuation_token)
+   ```
+   若前一輪因網路中斷未取得有效 `continuation_token`，`advance_turn` 拒絕無條件推進輪次，避免 Session 進入損壞狀態。
+2. **協議構建保護**：在 [`WebChannelPayloadBuilder`](../gemini_flow/infrastructure/clients/gemini_api/protocol/payload_builder.py) 中：
+   ```python
+   is_continuation = bool(self.turn_index > 0 and self.conversation_id and self.continuation_token)
+   if is_continuation:
+       tag72_conv = (
+           ProtobufBuilder()
+           .add_string(1, self.conversation_id)
+           .add_string(8, self.continuation_token)
+       )
+       inner.add_message(72, tag72_conv)
+
+   inner.add_varint(97, 1 if is_continuation else 0)
+   ```
+   唯有具備完整延續資訊時才輸出 `Tag 72` 與 `Tag 97=1`；若 token 缺失則平滑降級為新對話封包，百分之百保證構建之 Protobuf 結構合規。
+
+### 8.3 協議規劃引擎純無狀態化 (Stateless Protocol Engine)
+舊版 `WebChannelProtocolEngine` 曾在實例初始化時生成並綁定固定之 `self.session_uuid`。在長期運行的服務實例中，跨請求復用引擎會導致所有使用者會話共享同一 UUID。
+重構後將 `session_uuid` 的生命週期完全限制在 `plan_turn` 調用範圍內（由 `session_data.session_id` 注入或按需單次生成），使 `WebChannelProtocolEngine` 成為純粹的**無狀態規劃器 (Stateless Planner)**，保證線程與非同步安全。
+
+### 8.4 位元組緩衝區就地操作 (In-place Byte Buffering)
+在 [`CurlHttpClient.get_stream`](../gemini_flow/infrastructure/clients/http_client.py) 中：
+1. 每一輪長度解碼前先行清除開頭殘留之 `\r`, `\n`, `\t` 與空白字元，防止 TCP 邊界切片干擾 `^(\d+)\s*\n` 正則解析。
+2. 使用 `del buffer[:total_needed]` 取代 `buffer = buffer[total_needed:]`，在 CPython `bytearray` 內部直接進行原地記憶體位移操作，避免長串流高頻重新分配與垃圾回收開銷。
+
+### 8.5 廢棄接口與過渡別名完全消除
+- 自 [`IHttpClient`](../gemini_flow/domain/interfaces.py)、[`CurlHttpClient`](../gemini_flow/infrastructure/clients/http_client.py) 與 [`FakeHttpClient`](../tests/fakes/fake_http_client.py) 徹底刪除已無任何用途的歷史單向 `post_stream` 接口。
+- 自 [`webchannel_client.py`](../gemini_flow/infrastructure/clients/gemini_api/webchannel_client.py) 刪除過渡別名 `WebChannelChatProvider`，全面統一名稱為 `GeminiWebChannelClient`。

@@ -104,8 +104,13 @@ class TestWebChannelProtocol(unittest.TestCase):
         self.assertEqual(ProtobufReader.find_field(inner1, 81), 1)
         self.assertEqual(ProtobufReader.find_field(inner1, 97), 0)  # new session = 0
 
-        # Turn 4: Argon Medium
-        sess4 = SessionData(session_id="s4", conversation_id="c_1", turn_index=3)
+        # Turn 4: Argon Medium (Continuation with token)
+        sess4 = SessionData(
+            session_id="s4",
+            conversation_id="c_1",
+            continuation_token="token_s4_xyz",
+            turn_index=3,
+        )
         plan4 = engine.plan_turn(
             request=ChatRequest(prompt="第四次測試", model="gemini4Argon", thinking="medium"),
             credentials=self.creds,
@@ -116,6 +121,20 @@ class TestWebChannelProtocol(unittest.TestCase):
         self.assertEqual(ProtobufReader.find_field(inner4, 80), 8)
         self.assertEqual(ProtobufReader.find_field(inner4, 81), 4)
         self.assertEqual(ProtobufReader.find_field(inner4, 97), 1)  # continuation session = 1
+        self.assertEqual(ProtobufReader.find_path(inner4, [72, 1]), "c_1")
+        self.assertEqual(ProtobufReader.find_path(inner4, [72, 8]), "token_s4_xyz")
+
+        # Turn 5: Missing continuation token gracefully degrades to Tag 97 = 0 without Tag 72
+        sess5 = SessionData(session_id="s5", conversation_id="c_1", continuation_token=None, turn_index=3)
+        plan5 = engine.plan_turn(
+            request=ChatRequest(prompt="第五次測試", model="gemini4Argon", thinking="medium"),
+            credentials=self.creds,
+            session_data=sess5,
+        )
+        init5 = ProtobufReader.parse(base64.b64decode(plan5.payload_builder.build_metadata_payload()))
+        inner5 = ProtobufReader.find_path(init5, [1, 8, 5, 1])
+        self.assertEqual(ProtobufReader.find_field(inner5, 97), 0)  # degraded to new turn
+        self.assertIsNone(ProtobufReader.find_field(inner5, 72))
 
     def test_check_control_error_401(self):
         from gemini_flow.infrastructure.clients.gemini_api.webchannel_parser import WebChannelStreamParser

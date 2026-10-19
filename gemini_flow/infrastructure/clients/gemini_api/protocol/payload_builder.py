@@ -112,11 +112,14 @@ class WebChannelPayloadBuilder:
         inner.add_varint(68, 0)
         inner.add_varint(69, 1)
 
-        # Tag 72: Conversation Continuation Context
-        if self.turn_index > 0 and self.conversation_id:
-            tag72_conv = ProtobufBuilder().add_string(1, self.conversation_id)
-            if self.continuation_token:
-                tag72_conv.add_string(8, self.continuation_token)
+        # Tag 72 & Tag 97: Conversation Continuation Context
+        is_continuation = bool(self.turn_index > 0 and self.conversation_id and self.continuation_token)
+        if is_continuation:
+            tag72_conv = (
+                ProtobufBuilder()
+                .add_string(1, self.conversation_id)
+                .add_string(8, self.continuation_token)
+            )
             inner.add_message(72, tag72_conv)
 
         # Tag 80 & 81: Model Routing ID and Thinking Level
@@ -125,8 +128,8 @@ class WebChannelPayloadBuilder:
 
         # End flags
         inner.add_varint(92, 1)
-        # Tag 97: 0 for new session (turn 0), 1 for continuing session (turn > 0)
-        inner.add_varint(97, 0 if self.turn_index == 0 else 1)
+        # Tag 97: 0 for new session (turn 0), 1 for continuing session (turn > 0 with valid token)
+        inner.add_varint(97, 1 if is_continuation else 0)
         inner.add_varint(99, 1)
 
         # 2. Outer Envelope: Tag 1 -> Tag 8 -> Tag 5 -> [Tag 1 (inner), Tag 4 (1)]
