@@ -1,6 +1,6 @@
 from __future__ import annotations
 import time
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict
 from pydantic import BaseModel, Field
 from .models import ThinkingLevel, ModelSpec
 
@@ -55,10 +55,21 @@ class ChatResponseChunk(BaseModel):
     continuation_token: Optional[str] = None
 
 
-class GeminiTokens(BaseModel):
-    snlm0e: str
-    sid: Optional[str] = None
+class GeminiCredentials(BaseModel):
+    cookies: Dict[str, str] = Field(default_factory=dict)
     server_bl: Optional[str] = None
+    api_key: str = "AIzaSyAPW83vB9zFQqfpMup_cMJdELqDQkWvTho"
+    sid: Optional[str] = None
+    snlm0e: Optional[str] = None
+
+    @property
+    def sapisid(self) -> Optional[str]:
+        return self.cookies.get("SAPISID") or self.cookies.get("__Secure-3PAPISID") or self.cookies.get("__Secure-1PAPISID")
+
+
+class GeminiTokens(GeminiCredentials):
+    """Alias for GeminiCredentials to maintain backward compatibility during migration."""
+    pass
 
 
 class BotguardToken(BaseModel):

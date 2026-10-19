@@ -14,7 +14,7 @@ class ModelFamily(str, Enum):
         if self in (ModelFamily.FLASH, ModelFamily.FLASH_LITE):
             return 1
         if self == ModelFamily.PRO:
-            return 6
+            return 3
         if self == ModelFamily.ARGON:
             return 8
         return 1
@@ -26,7 +26,7 @@ class ModelFamily(str, Enum):
         if self == ModelFamily.FLASH:
             return "56fdd199312815e2"
         if self == ModelFamily.PRO:
-            return "8c46e95b1a07cecc"
+            return "e6fa609c3fa255c0"
         if self == ModelFamily.ARGON:
             return "95a4c0abcba24364"
         return "56fdd199312815e2"

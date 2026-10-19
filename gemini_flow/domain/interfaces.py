@@ -41,6 +41,25 @@ class IHttpClient(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_stream(
+        self,
+        url: str,
+        params: Optional[Dict[str, str]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> AsyncGenerator[str, None]:
+        pass
+
+    @abc.abstractmethod
+    async def post(
+        self,
+        url: str,
+        params: Optional[Dict[str, str]] = None,
+        data: Any = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> IHttpResponse:
+        pass
+
+    @abc.abstractmethod
     async def post_stream(
         self,
         url: str,
@@ -65,19 +84,11 @@ class IHttpClient(abc.ABC):
 
 class IAuthService(abc.ABC):
     @abc.abstractmethod
-    async def ensure_valid_tokens(self) -> GeminiTokens:
-        """
-        Ensures that valid tokens (SNlM0e and sid) are available.
-        This may involve launching a browser to refresh cookies and scraping the token.
-        Raises exceptions (like RequireManualLoginError) if validation fails.
-        """
+    async def ensure_valid_tokens(self) -> Any:
         pass
     
     @abc.abstractmethod
     async def get_cookies_dict(self) -> list[dict]:
-        """
-        Returns the current stored cookies in a format suitable for the HTTP client.
-        """
         pass
 
 class ITokenSigner(abc.ABC):
@@ -85,9 +96,6 @@ class ITokenSigner(abc.ABC):
     async def sign(
         self, prompt: str, conversation_id: Optional[str] = None
     ) -> BotguardToken:
-        """
-        Generates a cryptographic attestation token and salt for the given prompt and conversation.
-        """
         pass
 
 class IChatProvider(abc.ABC):
@@ -95,13 +103,9 @@ class IChatProvider(abc.ABC):
     async def stream_generate(
         self, 
         request: ChatRequest, 
-        tokens: GeminiTokens,
+        tokens: Any,
         session_data: Optional[SessionData] = None
     ) -> AsyncGenerator[ChatResponseChunk, None]:
-        """
-        Streams a chat response from the provider given a request and valid tokens.
-        May raise TokenExpiredError if the provider rejects the tokens during the request.
-        """
         pass
 
 class ISessionStore(abc.ABC):

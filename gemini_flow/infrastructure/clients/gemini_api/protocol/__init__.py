@@ -1,10 +1,10 @@
-from .header_builder import JspbHeaderBuilder
-from .payload_builder import GeminiPayloadBuilder
-from .protocol_engine import GeminiProtocolEngine, ProtocolRequest
+from .header_builder import WebChannelHeaderBuilder
+from .payload_builder import WebChannelPayloadBuilder
+from .protocol_engine import WebChannelProtocolEngine, WebChannelRequestPlan
 
 __all__ = [
-    "JspbHeaderBuilder",
-    "GeminiPayloadBuilder",
-    "GeminiProtocolEngine",
-    "ProtocolRequest",
+    "WebChannelHeaderBuilder",
+    "WebChannelPayloadBuilder",
+    "WebChannelProtocolEngine",
+    "WebChannelRequestPlan",
 ]

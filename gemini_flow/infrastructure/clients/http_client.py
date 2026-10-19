@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, AsyncGenerator, Iterator, Tuple
 from curl_cffi.requests import AsyncSession, Response
 from curl_cffi.requests.exceptions import RequestException, Timeout, CurlError
 
+import re
 from gemini_flow.config import DEFAULT_HTTP_HEADERS
 from gemini_flow.domain.interfaces import IHttpClient, IHttpResponse
 from gemini_flow.domain.exceptions import NetworkError, TokenExpiredError, RateLimitError
@@ -161,6 +162,72 @@ class HttpClient(IHttpClient):
             return resp.text
         except (RequestException, Timeout, CurlError) as e:
             logger.error(f"GET {url} failed: {e}")
+            raise NetworkError(f"Network request failed: {e}") from e
+    async def get_stream(
+        self,
+        url: str,
+        params: Optional[Dict[str, str]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> AsyncGenerator[str, None]:
+        logger.debug(f"GET STREAM {url}")
+        req_headers = self._prepare_headers(headers)
+        try:
+            resp = await self._get_session().get(
+                url,
+                params=params,
+                headers=req_headers,
+                stream=True,
+                proxy=self.proxy,
+                timeout=self.timeout,
+            )
+            self._check_status(resp.status_code, url)
+            buffer = ""
+            async for chunk in resp.aiter_content():
+                buffer += chunk.decode("utf-8", errors="replace")
+                while buffer:
+                    match = re.search(r"^(\d+)\s*\n", buffer)
+                    if match:
+                        header_len = match.end()
+                        frame_len = int(match.group(1))
+                        total_needed = header_len + frame_len
+                        if len(buffer) < total_needed:
+                            break
+                        frame_data = buffer[header_len:total_needed]
+                        buffer = buffer[total_needed:].lstrip("\r\n")
+                        yield frame_data
+                    else:
+                        if "\n" in buffer:
+                            frame_data, buffer = buffer.split("\n", 1)
+                            if frame_data.strip():
+                                yield frame_data
+                        else:
+                            break
+        except (RequestException, Timeout, CurlError) as e:
+            logger.error(f"GET STREAM {url} failed: {e}")
+            raise NetworkError(f"Network streaming request failed: {e}") from e
+
+    async def post(
+        self,
+        url: str,
+        params: Optional[Dict[str, str]] = None,
+        data: Any = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> IHttpResponse:
+        logger.debug(f"POST {url}")
+        req_headers = self._prepare_headers(headers)
+        try:
+            resp = await self._get_session().post(
+                url,
+                params=params,
+                data=data,
+                headers=req_headers,
+                proxy=self.proxy,
+                timeout=self.timeout,
+            )
+            self._check_status(resp.status_code, url, resp.text)
+            return CurlHttpResponse(resp)
+        except (RequestException, Timeout, CurlError) as e:
+            logger.error(f"POST {url} failed: {e}")
             raise NetworkError(f"Network request failed: {e}") from e
 
     async def post_stream(

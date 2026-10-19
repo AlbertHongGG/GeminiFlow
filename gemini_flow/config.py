@@ -3,7 +3,7 @@ from pathlib import Path
 
 # URLs
 GEMINI_BASE_URL = "https://gemini.google.com"
-GEMINI_REQUEST_URL = "https://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
+GEMINI_PROCESS_SESSION_URL = "https://geminiweb-pa.clients6.google.com/v1/processSession"
 UPLOAD_IMAGE_URL = "https://push.clients6.google.com/upload/"
 
 # Protocol constants

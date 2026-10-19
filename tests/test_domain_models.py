@@ -8,8 +8,8 @@ class TestDomainModels(unittest.TestCase):
         self.assertEqual(ModelFamily.FLASH_LITE.model_hash, "fbb127bbb056c959")
         self.assertEqual(ModelFamily.FLASH.model_id, 1)
         self.assertEqual(ModelFamily.FLASH.model_hash, "56fdd199312815e2")
-        self.assertEqual(ModelFamily.PRO.model_id, 6)
-        self.assertEqual(ModelFamily.PRO.model_hash, "8c46e95b1a07cecc")
+        self.assertEqual(ModelFamily.PRO.model_id, 3)
+        self.assertEqual(ModelFamily.PRO.model_hash, "e6fa609c3fa255c0")
         self.assertEqual(ModelFamily.ARGON.model_id, 8)
         self.assertEqual(ModelFamily.ARGON.model_hash, "95a4c0abcba24364")
 
@@ -40,7 +40,7 @@ class TestDomainModels(unittest.TestCase):
         spec = ModelSpec.resolve("gemini-3.1-pro", thinking="high")
         self.assertEqual(spec.family, ModelFamily.PRO)
         self.assertEqual(spec.thinking, ThinkingLevel.HIGH)
-        self.assertEqual(spec.model_id, 6)
+        self.assertEqual(spec.model_id, 3)
         self.assertEqual(spec.thinking_level, 2)
 
         # Gemini 4 Argon with low/medium/high thinking

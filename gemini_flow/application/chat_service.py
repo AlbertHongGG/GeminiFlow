@@ -59,12 +59,14 @@ class ChatService:
         session_data: Optional[SessionData], 
         cookies: dict
     ) -> AsyncGenerator[ChatResponseChunk, None]:
+        latest_conv_id = None
+        latest_cont_token = None
         async for chunk in self.chat_provider.stream_generate(request, tokens, session_data):
-            if chunk.conversation_id and session_data:
-                session_data.conversation_id = chunk.conversation_id
-                session_data.advance_turn(chunk.continuation_token)
-                self.session_store.save(session_data)
-                
+            if chunk.conversation_id:
+                latest_conv_id = chunk.conversation_id
+            if chunk.continuation_token:
+                latest_cont_token = chunk.continuation_token
+
             if chunk.image_url:
                 try:
                     local_path = await self.image_downloader.download_image(chunk.image_url, request.model)
@@ -72,3 +74,9 @@ class ChatService:
                 except Exception as e:
                     logger.error(f"Image download failed: {e}")
             yield chunk
+
+        if session_data:
+            if latest_conv_id:
+                session_data.conversation_id = latest_conv_id
+            session_data.advance_turn(latest_cont_token)
+            self.session_store.save(session_data)

@@ -1,38 +1,25 @@
 from __future__ import annotations
-import json
-from typing import List, Tuple, Sequence, Optional, Dict, Any
+import base64
+from typing import Sequence, Tuple, Optional, Any, Dict
 from gemini_flow.domain.models import ModelSpec
+from gemini_flow.infrastructure.protocol.protobuf import ProtobufBuilder
 
-class GeminiPayloadBuilder:
+class WebChannelPayloadBuilder:
     """
-    Constructs the 99-element inner Protobuf/JSPB array for Gemini StreamGenerate requests.
-    Eliminates magic numbers by assigning named semantic constants conforming to
-    the latest October 2026 wire protocol specification.
+    Constructs binary Protobuf payloads for WebChannel upstream POST requests:
+    - ofs=0: Session metadata & conversation context
+    - ofs=1: Prompt text message payload
+    - ofs=2: Finalize/Ack payload
     """
 
-    ARRAY_LENGTH = 99
-
-    # Named indices in inner_req
-    IDX_PROMPT_BLOCK = 0
-    IDX_LANGUAGE = 1
-    IDX_BOTGUARD_TOKEN = 3
-    IDX_BOTGUARD_SALT = 4
-    IDX_TURN_INDEX = 17
-    IDX_CAPABILITIES = 30
-    IDX_REQ_UUID = 59
-    IDX_CONVERSATION_CONTEXT = 71
-    IDX_MODEL_ID = 79
-    IDX_THINKING_LEVEL = 80
-    IDX_NEW_SESSION_FLAG = 96
+    CAPABILITIES = [4, 16, 19]
 
     def __init__(
         self,
         prompt: str,
-        system_prompt: Optional[str],
         language: str,
         model_spec: ModelSpec,
         req_uuid: str,
-        uploads: Optional[Sequence[Tuple[str, str]]] = None,
         conversation_id: Optional[str] = None,
         continuation_token: Optional[str] = None,
         turn_index: int = 0,
@@ -40,117 +27,129 @@ class GeminiPayloadBuilder:
         botguard_salt: Optional[str] = None,
     ):
         self.prompt = prompt
-        if system_prompt:
-            self.prompt = f"System:\n{system_prompt}\n\nUser:\n{prompt}"
-            
         self.language = language
         self.model_spec = model_spec
         self.req_uuid = req_uuid
-        self.uploads = uploads or []
         self.conversation_id = conversation_id
         self.continuation_token = continuation_token
         self.turn_index = turn_index
         self.botguard_token = botguard_token
         self.botguard_salt = botguard_salt
 
-    def _build_image_list(self) -> Optional[List[Any]]:
-        if not self.uploads:
-            return None
-        return [
-            [[upload_ref, 1], image_name] for upload_ref, image_name in self.uploads
-        ]
-
-    def _build_conversation_context(self) -> Optional[List[Any]]:
+    def build_metadata_payload(self) -> str:
         """
-        Builds the 8-element conversation continuation block for arr[71].
-        [conv_id, None, None, None, None, None, None, continuation_token]
-        Only populated on turn_index > 0 when a conversation_id is available.
+        Builds the complete Protobuf metadata payload for ofs=0.
+        Returns Base64 string for req0___data__.
         """
-        if self.turn_index == 0 or not self.conversation_id:
-            return None
-        return [
-            self.conversation_id,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            self.continuation_token,
-        ]
+        # 1. Inner 99-tag Core Message
+        inner = ProtobufBuilder()
 
-    def build_inner_array(self) -> List[Any]:
-        """
-        Builds the complete 99-element Protobuf/JSPB request array.
-        """
-        arr: List[Any] = [None] * self.ARRAY_LENGTH
+        # Tag 1: Prompt Container (empty text in metadata phase)
+        tag1_prompt_container = (
+            ProtobufBuilder()
+            .add_bytes(1, b"")
+            .add_varint(2, 0)
+            .add_varint(7, 0)
+        )
+        inner.add_message(1, tag1_prompt_container)
 
-        # 0: Prompt block
-        arr[self.IDX_PROMPT_BLOCK] = [
-            self.prompt,
-            0,
-            None,
-            self._build_image_list(),
-            None,
-            None,
-            0,
-        ]
+        # Tag 2: Language
+        tag2_lang = ProtobufBuilder().add_string(1, self.language)
+        inner.add_message(2, tag2_lang)
 
-        # 1: Language block
-        arr[self.IDX_LANGUAGE] = [self.language]
-
-        # 3 & 4: Botguard attestation token and random salt
-        if self.botguard_token is not None:
-            arr[self.IDX_BOTGUARD_TOKEN] = self.botguard_token
-        if self.botguard_salt is not None:
-            arr[self.IDX_BOTGUARD_SALT] = self.botguard_salt
+        # Tag 4 & 5: Botguard Attestation and Salt
+        if self.botguard_token:
+            inner.add_string(4, self.botguard_token)
+        if self.botguard_salt:
+            inner.add_string(5, self.botguard_salt)
 
         # Standard static protocol flags
-        arr[6] = [0]
-        arr[7] = 1
-        arr[10] = 1
-        arr[11] = 0
+        tag7_box = ProtobufBuilder().add_varint(1, 0)
+        inner.add_message(7, tag7_box)
+        inner.add_varint(8, 1)
+        inner.add_varint(11, 1)
+        inner.add_varint(12, 0)
 
-        # 17: Turn sequence index [[0]], [[1]], etc.
-        arr[self.IDX_TURN_INDEX] = [[self.turn_index]]
-        arr[18] = 0
-        arr[27] = 1
+        # Tag 18: Turn index [[turn_index]]
+        tag18_turn = (
+            ProtobufBuilder()
+            .add_message(1, ProtobufBuilder().add_varint(1, self.turn_index))
+        )
+        inner.add_message(18, tag18_turn)
+        inner.add_varint(19, 0)
+        inner.add_varint(28, 1)
 
-        # 30: Feature capability flags
-        arr[self.IDX_CAPABILITIES] = [4, 16, 19]
-        arr[41] = [1]
-        arr[49] = 0
-        arr[53] = 0
+        # Tag 31: Capabilities [4, 16, 19]
+        inner.add_packed_varints(31, self.CAPABILITIES)
 
-        # 59: Request UUID matching Header x-goog-ext-525005358-jspb
-        arr[self.IDX_REQ_UUID] = self.req_uuid
-        arr[61] = []
-        arr[67] = 0
-        arr[68] = 1
+        # Static flags
+        tag42_box = ProtobufBuilder().add_varint(1, 1)
+        inner.add_message(42, tag42_box)
+        inner.add_varint(50, 0)
+        inner.add_varint(54, 0)
 
-        # 71: Conversation continuation context
-        arr[self.IDX_CONVERSATION_CONTEXT] = self._build_conversation_context()
+        # Tag 60: Request UUID
+        inner.add_string(60, self.req_uuid)
+        inner.add_bytes(62, b"")
+        inner.add_varint(68, 0)
+        inner.add_varint(69, 1)
 
-        # 79 & 80: Model routing ID and Thinking level
-        arr[self.IDX_MODEL_ID] = self.model_spec.model_id
-        arr[self.IDX_THINKING_LEVEL] = self.model_spec.thinking_level
+        # Tag 72: Conversation Continuation Context
+        if self.turn_index > 0 and self.conversation_id:
+            tag72_conv = ProtobufBuilder().add_string(1, self.conversation_id)
+            if self.continuation_token:
+                tag72_conv.add_string(8, self.continuation_token)
+            inner.add_message(72, tag72_conv)
+
+        # Tag 80 & 81: Model Routing ID and Thinking Level
+        inner.add_varint(80, self.model_spec.model_id)
+        inner.add_varint(81, self.model_spec.thinking_level)
 
         # End flags
-        arr[91] = 1
-        # 96: 0 for new session (turn 0), 1 for continuing session (turn > 0)
-        arr[self.IDX_NEW_SESSION_FLAG] = 0 if self.turn_index == 0 else 1
-        arr[98] = 1
+        inner.add_varint(92, 1)
+        # Tag 97: 0 for new session (turn 0), 1 for continuing session (turn > 0)
+        inner.add_varint(97, 0 if self.turn_index == 0 else 1)
+        inner.add_varint(99, 1)
 
-        return arr
+        # 2. Outer Envelope: Tag 1 -> Tag 8 -> Tag 5 -> [Tag 1 (inner), Tag 4 (1)]
+        tag5_envelope = ProtobufBuilder().add_message(1, inner).add_varint(4, 1)
+        tag8_envelope = ProtobufBuilder().add_message(5, tag5_envelope)
 
-    def build_post_data(self, at_token: str) -> Dict[str, str]:
+        # Session routing header block (Tag 1 of outer envelope)
+        tag1_routing = (
+            ProtobufBuilder()
+            .add_varint(1, 1)
+            .add_string(2, self.model_spec.model_hash)
+            .add_string(3, self.language)
+            .add_string(4, self.req_uuid)
+        )
+
+        inner_root = (
+            ProtobufBuilder()
+            .add_message(1, tag1_routing)
+            .add_varint(2, 0)
+            .add_message(8, tag8_envelope)
+        )
+        outer = ProtobufBuilder().add_message(1, inner_root)
+        return outer.to_base64()
+
+    def build_prompt_payload(self) -> str:
         """
-        Builds the form postData payload containing 'at' and 'f.req'.
-        Uses ensure_ascii=False to exactly mirror browser JSON.stringify UTF-8 behavior.
+        Builds the prompt text message payload for ofs=1.
+        Tag 2 -> Tag 1 (varint 1), Tag 9 -> Tag 1 (string prompt)
+        Returns Base64 string for req0___data__.
         """
-        inner = self.build_inner_array()
-        inner_json = json.dumps(inner, separators=(",", ":"), ensure_ascii=False)
-        return {
-            "at": at_token,
-            "f.req": json.dumps([None, inner_json], separators=(",", ":"), ensure_ascii=False),
-        }
+        text_sub = ProtobufBuilder().add_string(1, self.prompt)
+        container = ProtobufBuilder().add_varint(1, 1).add_message(9, text_sub)
+        root = ProtobufBuilder().add_message(2, container)
+        return root.to_base64()
+
+    def build_ack_payload(self) -> str:
+        """
+        Builds the finalize/ack payload for ofs=2.
+        Tag 4 -> Tag 1 (varint 1)
+        Returns Base64 string for req0___data__.
+        """
+        sub = ProtobufBuilder().add_varint(1, 1)
+        root = ProtobufBuilder().add_message(4, sub)
+        return root.to_base64()

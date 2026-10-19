@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict
 from gemini_flow.domain.interfaces import IAuthService, IWebBrowser
-from gemini_flow.domain.entities import GeminiTokens
+from gemini_flow.domain.entities import GeminiTokens, GeminiCredentials
 from gemini_flow.domain.exceptions import RequireManualLoginError
 from gemini_flow.config import GEMINI_BASE_URL
 from gemini_flow.infrastructure.storage.file_cookie_store import FileCookieStore
@@ -50,14 +50,15 @@ class GeminiAuthService(IAuthService):
 
         if not snlm0e:
             return None
-        return GeminiTokens(snlm0e=snlm0e, sid=sid, server_bl=server_bl)
+        return GeminiCredentials(cookies={}, snlm0e=snlm0e, sid=sid, server_bl=server_bl)
 
-    async def ensure_valid_tokens(self) -> GeminiTokens:
+    async def ensure_valid_tokens(self) -> GeminiCredentials:
         try:
             cookies = self.cookie_store.get_google_cookies()
-            tokens = await self._fetch_tokens_via_http(cookies)
-            if tokens:
-                return tokens
+            creds = await self._fetch_tokens_via_http(cookies)
+            if creds:
+                creds.cookies = cookies
+                return creds
         except Exception:
             pass
         
@@ -74,6 +75,7 @@ class GeminiAuthService(IAuthService):
             if tokens:
                 cookie_export = await self.web_browser.get_cookies()
                 cookies_path.write_text(json.dumps(cookie_export, ensure_ascii=False, indent=2), encoding="utf-8")
+                tokens.cookies = self.cookie_store.get_google_cookies()
                 logger.info("Cookies refreshed and SNlM0e token verified successfully.")
                 return tokens
             else:
