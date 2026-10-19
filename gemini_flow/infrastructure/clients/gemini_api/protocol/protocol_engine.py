@@ -2,10 +2,10 @@ from __future__ import annotations
 import uuid
 import random
 import string
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 from dataclasses import dataclass
 
-from gemini_flow.domain.entities import ChatRequest, GeminiCredentials, SessionData
+from gemini_flow.domain.entities import ChatRequest, GeminiCredentials, SessionData, UploadedImageAttachment
 from gemini_flow.infrastructure.auth.sapisid_signer import SAPISIDSigner
 from .header_builder import WebChannelHeaderBuilder
 from .payload_builder import WebChannelPayloadBuilder
@@ -41,6 +41,7 @@ class WebChannelProtocolEngine:
         session_data: Optional[SessionData] = None,
         botguard_token: Optional[str] = None,
         botguard_salt: Optional[str] = None,
+        uploaded_images: Sequence[UploadedImageAttachment] = (),
     ) -> WebChannelRequestPlan:
         req_uuid = str(uuid.uuid4()).upper()
         base_rid = random.randint(10000, 89000)
@@ -87,6 +88,7 @@ class WebChannelProtocolEngine:
             turn_index=turn_index,
             botguard_token=botguard_token,
             botguard_salt=botguard_salt,
+            uploaded_images=uploaded_images,
         )
 
         return WebChannelRequestPlan(

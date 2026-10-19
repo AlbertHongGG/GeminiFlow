@@ -116,3 +116,68 @@ class TestWebChannelProtocol(unittest.TestCase):
         self.assertEqual(ProtobufReader.find_field(inner4, 80), 8)
         self.assertEqual(ProtobufReader.find_field(inner4, 81), 4)
         self.assertEqual(ProtobufReader.find_field(inner4, 97), 1)  # continuation session = 1
+
+    def test_check_control_error_401(self):
+        from gemini_flow.infrastructure.clients.gemini_api.webchannel_parser import WebChannelStreamParser
+        from gemini_flow.domain.exceptions import AuthenticationError
+
+        parser = WebChannelStreamParser()
+        rpc_401_payload = '145\n[[1, {"__sm__": {"status": [[{"error": {"code": 401, "message": "Request is missing valid authentication credentials."}}]]}}]]\n'
+        with self.assertRaises(AuthenticationError) as cm:
+            parser.check_control_error(rpc_401_payload)
+        self.assertIn("401", str(cm.exception))
+
+    def test_check_control_error_429(self):
+        from gemini_flow.infrastructure.clients.gemini_api.webchannel_parser import WebChannelStreamParser
+        from gemini_flow.domain.exceptions import RateLimitError
+
+        parser = WebChannelStreamParser()
+        rpc_429_payload = '110\n[[1, {"__sm__": {"status": [[{"error": {"code": 429, "message": "RESOURCE_EXHAUSTED"}}]]}}]]\n'
+        with self.assertRaises(RateLimitError) as cm:
+            parser.check_control_error(rpc_429_payload)
+        self.assertIn("429", str(cm.exception))
+
+    def test_byte_level_chunk_framing_multibyte_utf8(self):
+        """
+        Tests that when Chinese/multibyte characters are split across TCP chunk boundaries,
+        the byte-level framer does not corrupt characters or miscalculate frame length.
+        """
+        import re
+
+        # Chinese string where each char is 3 bytes in UTF-8: "這是一段繁體中文測試訊息！" (13 chars * 3 = 39 bytes + quotes/brackets)
+        json_frame = '[1, ["這是一段繁體中文測試訊息！🎉"]]'
+        raw_bytes = json_frame.encode("utf-8")
+        byte_len = len(raw_bytes)
+        
+        full_wire_packet = f"{byte_len}\n".encode("ascii") + raw_bytes + b"\n"
+
+        # Split across an arbitrary byte position right in the middle of a 3-byte Chinese character or 4-byte emoji
+        split_pos = 12
+        chunk1 = full_wire_packet[:split_pos]
+        chunk2 = full_wire_packet[split_pos:]
+
+        buffer = bytearray()
+        yielded_frames = []
+
+        for chunk in [chunk1, chunk2]:
+            buffer.extend(chunk)
+            while buffer:
+                match = re.search(rb"^(\d+)\s*\n", buffer)
+                if match:
+                    header_len = match.end()
+                    frame_len = int(match.group(1).decode("ascii"))
+                    total_needed = header_len + frame_len
+                    if len(buffer) < total_needed:
+                        break
+                    frame_bytes = bytes(buffer[header_len:total_needed])
+                    buffer = buffer[total_needed:]
+                    while buffer and buffer[:1] in (b"\r", b"\n"):
+                        del buffer[0]
+                    yielded_frames.append(frame_bytes.decode("utf-8", errors="replace"))
+                else:
+                    break
+
+        self.assertEqual(len(yielded_frames), 1)
+        self.assertEqual(yielded_frames[0], json_frame)
+        self.assertIn("這是一段繁體中文測試訊息！🎉", yielded_frames[0])
+

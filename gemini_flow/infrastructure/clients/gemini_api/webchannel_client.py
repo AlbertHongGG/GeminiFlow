@@ -1,29 +1,31 @@
 from __future__ import annotations
 import logging
 import asyncio
-from typing import AsyncGenerator, Optional, List, Tuple, Any
+import re
+import json
+from typing import AsyncGenerator, Optional, List, Any
+
 from gemini_flow.domain.interfaces import IChatProvider, IHttpClient, ITokenSigner, IImageUploader
 from gemini_flow.domain.entities import (
     ChatRequest,
     ChatResponseChunk,
     SessionData,
     GeminiCredentials,
+    UploadedImageAttachment,
     ImagePayload,
 )
 from gemini_flow.config import GEMINI_PROCESS_SESSION_URL, REQUEST_BL_PARAM
 from gemini_flow.infrastructure.attestation import EmbeddedV8TokenSigner
 from gemini_flow.infrastructure.clients.gemini_uploader import GeminiImageUploader
-from .protocol import WebChannelProtocolEngine
+from .protocol import WebChannelProtocolEngine, WebChannelRequestPlan
 from .webchannel_parser import WebChannelStreamParser
-
-import json
-import re
 
 logger = logging.getLogger("gemini_flow.webchannel_client")
 
-class WebChannelChatProvider(IChatProvider):
+
+class GeminiWebChannelClient(IChatProvider):
     """
-    Implements IChatProvider over Google's real-time WebChannel duplex protocol
+    Canonical client implementing IChatProvider over Google's real-time WebChannel duplex protocol
     (geminiweb-pa.clients6.google.com/v1/processSession).
     """
 
@@ -41,12 +43,12 @@ class WebChannelChatProvider(IChatProvider):
         self.token_signer = token_signer if token_signer is not None else EmbeddedV8TokenSigner(proxy=effective_proxy)
         self.image_uploader = image_uploader if image_uploader is not None else GeminiImageUploader(http_client)
 
-    async def upload_images(self, images: List[ImagePayload]) -> List[Tuple[str, str]]:
+    async def upload_images(self, images: List[ImagePayload]) -> List[UploadedImageAttachment]:
         return await self.image_uploader.upload_images(images)
 
     async def _send_upstream_payloads(
         self,
-        plan: Any,
+        plan: WebChannelRequestPlan,
         gsessionid: str,
         sid: str,
         ready_evt: asyncio.Event,
@@ -54,7 +56,7 @@ class WebChannelChatProvider(IChatProvider):
         """Sends ofs=0 and ofs=1 with proper pacing once downstream stream is active."""
         await ready_evt.wait()
 
-        # 1. ofs=0 (Metadata)
+        # 1. ofs=0 (Metadata & image attachments)
         params_0 = self.protocol_engine.build_upstream_params(gsessionid, sid, rid=plan.base_rid + 1, aid=0)
         data_0 = {
             "count": "1",
@@ -66,7 +68,7 @@ class WebChannelChatProvider(IChatProvider):
         # Brief pacing delay before prompt
         await asyncio.sleep(0.5)
 
-        # 2. ofs=1 (Prompt)
+        # 2. ofs=1 (Prompt text)
         params_1 = self.protocol_engine.build_upstream_params(gsessionid, sid, rid=plan.base_rid + 2, aid=2)
         data_1 = {
             "count": "1",
@@ -78,29 +80,13 @@ class WebChannelChatProvider(IChatProvider):
     async def stream_generate(
         self,
         request: ChatRequest,
-        tokens: Any,
+        credentials: GeminiCredentials,
         session_data: Optional[SessionData] = None,
     ) -> AsyncGenerator[ChatResponseChunk, None]:
-        # Normalize credentials
-        if isinstance(tokens, GeminiCredentials):
-            credentials = tokens
-        elif hasattr(tokens, "cookies"):
-            credentials = GeminiCredentials(
-                cookies=tokens.cookies,
-                server_bl=getattr(tokens, "server_bl", None),
-                sid=getattr(tokens, "sid", None),
-            )
-        elif isinstance(tokens, dict):
-            credentials = GeminiCredentials(cookies=tokens)
-        else:
-            credentials = GeminiCredentials(
-                server_bl=getattr(tokens, "server_bl", None),
-                sid=getattr(tokens, "sid", None),
-            )
-
-        # 1. Upload images if attached
+        # 1. Upload images if attached to obtain Scotty references
+        uploaded_images: List[UploadedImageAttachment] = []
         if request.images:
-            await self.image_uploader.upload_images(request.images)
+            uploaded_images = await self.image_uploader.upload_images(request.images)
 
         # 2. Cryptographic Botguard Attestation
         botguard_token = None
@@ -121,6 +107,7 @@ class WebChannelChatProvider(IChatProvider):
             session_data=session_data,
             botguard_token=botguard_token,
             botguard_salt=botguard_salt,
+            uploaded_images=uploaded_images,
         )
 
         # 4. Step 1: Handshake POST count=0
@@ -131,7 +118,7 @@ class WebChannelChatProvider(IChatProvider):
             data=plan.handshake_data,
         )
         gsessionid = handshake_resp.headers.get("x-http-session-id") or plan.session_uuid
-        
+
         # Parse SID from handshake response body: [[0, ["c", "<SID>", ...]]]
         body = handshake_resp.content.decode("utf-8", errors="ignore").strip()
         clean_body = re.sub(r"^\d+\s*\n", "", body).strip()
@@ -143,11 +130,11 @@ class WebChannelChatProvider(IChatProvider):
                     sid = h_json[0][1][1]
             except Exception as e:
                 logger.debug(f"Failed to parse SID from handshake body: {e}")
-        
+
         if not sid:
             sid = credentials.sid or "sid_default"
 
-        # 5. Launch upstream pushes when stream is active
+        # 5. Launch upstream pushes when downstream stream is active
         ready_evt = asyncio.Event()
         push_task = asyncio.create_task(self._send_upstream_payloads(plan, gsessionid, sid, ready_evt))
 
@@ -169,7 +156,14 @@ class WebChannelChatProvider(IChatProvider):
                 if not chunk or not chunk.strip():
                     continue
 
+                # Check upstream task health immediately
+                if push_task.done() and push_task.exception():
+                    raise push_task.exception()
+
                 received_chunks += 1
+
+                # Check for RPC control errors (e.g. 401 unauthorized, 429 rate limit)
+                parser.check_control_error(chunk)
 
                 # Check for generated image URLs
                 for img_url in parser.extract_image_candidates(chunk):
@@ -207,14 +201,22 @@ class WebChannelChatProvider(IChatProvider):
         finally:
             if not push_task.done():
                 push_task.cancel()
+                try:
+                    await push_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.debug(f"Push task cancelled with: {e}")
             else:
                 exc = push_task.exception()
                 if exc:
-                    logger.error(f"Upstream push task error: {exc}")
+                    raise exc
 
         # 7. Send ofs=2 (Ack)
         try:
-            params_2 = self.protocol_engine.build_upstream_params(gsessionid, sid, rid=plan.base_rid + 3, aid=received_chunks)
+            params_2 = self.protocol_engine.build_upstream_params(
+                gsessionid, sid, rid=plan.base_rid + 3, aid=received_chunks
+            )
             data_2 = {
                 "count": "1",
                 "ofs": "2",
@@ -230,3 +232,7 @@ class WebChannelChatProvider(IChatProvider):
                 conversation_id=current_conv_id,
                 continuation_token=current_cont_token,
             )
+
+
+# Alias for backward migration if needed within this module
+WebChannelChatProvider = GeminiWebChannelClient

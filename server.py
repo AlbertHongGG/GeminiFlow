@@ -17,7 +17,7 @@ from gemini_flow.domain.exceptions import AuthenticationError, NetworkError, Pay
 from gemini_flow.config import AppConfig
 from gemini_flow.infrastructure.logging.logger import setup_logging
 from gemini_flow.infrastructure.clients.http_client import HttpClient
-from gemini_flow.infrastructure.clients.gemini_api.api_client import GeminiAPIClient
+from gemini_flow.infrastructure.clients.gemini_api.webchannel_client import GeminiWebChannelClient
 from gemini_flow.infrastructure.auth.gemini_auth import GeminiAuthService
 from gemini_flow.infrastructure.storage.file_cookie_store import FileCookieStore
 from gemini_flow.infrastructure.storage.file_session_store import FileSessionStore
@@ -105,7 +105,7 @@ def _get_chat_service(request: web.Request) -> ChatService:
     
     cookie_store = FileCookieStore(config.cookies_dir)
     auth_service = GeminiAuthService(config.cookies_dir, cookie_store, http_client, browser_provider)
-    chat_provider = GeminiAPIClient(http_client)
+    chat_provider = GeminiWebChannelClient(http_client)
     session_store = FileSessionStore(config.sessions_dir)
     image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
     
@@ -248,7 +248,7 @@ async def init_app_state(app: web.Application):
     # Initialize shared ChatService with cached attestation signer
     cookie_store = FileCookieStore(config.cookies_dir)
     auth_service = GeminiAuthService(config.cookies_dir, cookie_store, app[HTTP_CLIENT_KEY], app[BROWSER_KEY])
-    chat_provider = GeminiAPIClient(app[HTTP_CLIENT_KEY])
+    chat_provider = GeminiWebChannelClient(app[HTTP_CLIENT_KEY])
     session_store = FileSessionStore(config.sessions_dir)
     image_downloader = GeminiImageDownloader(config.image_output_dir, app[BROWSER_KEY])
 

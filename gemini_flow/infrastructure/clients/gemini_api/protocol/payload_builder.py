@@ -2,6 +2,7 @@ from __future__ import annotations
 import base64
 from typing import Sequence, Tuple, Optional, Any, Dict
 from gemini_flow.domain.models import ModelSpec
+from gemini_flow.domain.entities import UploadedImageAttachment
 from gemini_flow.infrastructure.protocol.protobuf import ProtobufBuilder
 
 class WebChannelPayloadBuilder:
@@ -25,6 +26,7 @@ class WebChannelPayloadBuilder:
         turn_index: int = 0,
         botguard_token: Optional[str] = None,
         botguard_salt: Optional[str] = None,
+        uploaded_images: Sequence[UploadedImageAttachment] = (),
     ):
         self.prompt = prompt
         self.language = language
@@ -35,6 +37,7 @@ class WebChannelPayloadBuilder:
         self.turn_index = turn_index
         self.botguard_token = botguard_token
         self.botguard_salt = botguard_salt
+        self.uploaded_images = uploaded_images
 
     def build_metadata_payload(self) -> str:
         """
@@ -49,8 +52,23 @@ class WebChannelPayloadBuilder:
             ProtobufBuilder()
             .add_bytes(1, b"")
             .add_varint(2, 0)
-            .add_varint(7, 0)
         )
+        for img in self.uploaded_images:
+            tag1_spec = (
+                ProtobufBuilder()
+                .add_string(1, img.ref_url)
+                .add_varint(2, 1)
+                .add_string(4, img.mime_type)
+                .add_string(5, img.attachment_uuid)
+            )
+            tag4_image = (
+                ProtobufBuilder()
+                .add_message(1, tag1_spec)
+                .add_string(2, img.filename)
+            )
+            tag1_prompt_container.add_message(4, tag4_image)
+
+        tag1_prompt_container.add_varint(7, 0)
         inner.add_message(1, tag1_prompt_container)
 
         # Tag 2: Language

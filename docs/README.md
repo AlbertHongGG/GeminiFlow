@@ -1,9 +1,13 @@
 # GeminiFlow 版本更新與高頻異動架構排查手冊 (Architecture Fragility & Migration Guide)
 
-文件版本: 1.0.0  
-記錄日期: 2026-10-15  
+文件版本: 2.0.0  
+記錄日期: 2026-10-20  
 適用範疇: Google Gemini Web 端通訊協定更新、版本遷移、端點變更與日常維運排查  
 文件定位: 當 Google 網頁端更新導致 API 異常（如 120 秒逾時、罐頭拒答、連線中斷、驗證失敗）時的核心檢核索引與排查指南。
+
+> [!IMPORTANT]
+> **2026-10-20 重大協定升級**：Google 網頁端已全面由舊版 `batchexecute`/`StreamGenerate` 遷移至 WebChannel 全雙工二進位 Protobuf 通訊協定（`geminiweb-pa.clients6.google.com/v1/processSession`）與 Scotty 多模態圖片直連架構。  
+> 完整技術逆向規格與重構架構設計，請參閱專題白皮書：[Google Gemini 2026-10-20 WebChannel 全雙工 Protobuf 通訊協定與多模態架構深度剖析](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md)。
 
 ---
 
@@ -328,12 +332,13 @@ for e in data['log']['entries']:
 
 | 系統功能模組 | 主要原始碼檔案 | 主要測試檔案 | 深度技術白皮書 |
 | :--- | :--- | :--- | :--- |
-| **領域模型與路由** | [models.py](../gemini_flow/domain/models.py)<br>[entities.py](../gemini_flow/domain/entities.py) | [test_domain_models.py](../tests/test_domain_models.py) | [botguard_investigation_and_latency_analysis.md](botguard_investigation_and_latency_analysis.md) |
-| **憑證與握手** | [gemini_auth.py](../gemini_flow/infrastructure/auth/gemini_auth.py) | [test_integration.py](../tests/test_integration.py) | [packet_analysis_and_latency_investigation_20261015.md](packet_analysis_and_latency_investigation_20261015.md) |
+| **領域模型與路由** | [models.py](../gemini_flow/domain/models.py)<br>[entities.py](../gemini_flow/domain/entities.py) | [test_domain_models.py](../tests/test_domain_models.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
+| **憑證與握手** | [gemini_auth.py](../gemini_flow/infrastructure/auth/gemini_auth.py) | [test_integration.py](../tests/test_integration.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
 | **Botguard WAA 客戶端** | [waa_client.py](../gemini_flow/infrastructure/attestation/waa_client.py) | [test_attestation.py](../tests/test_attestation.py) | [botguard_and_payload_attestation_analysis.md](botguard_and_payload_attestation_analysis.md) |
 | **內嵌 V8 虛擬機與樁** | [v8_runtime.py](../gemini_flow/infrastructure/attestation/v8_runtime.py)<br>[environment_stubs.py](../gemini_flow/infrastructure/attestation/environment_stubs.py) | [test_attestation.py](../tests/test_attestation.py) | [botguard_and_payload_attestation_analysis.md](botguard_and_payload_attestation_analysis.md) |
-| **JSPB 標頭與負載建構** | [payload_builder.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/payload_builder.py)<br>[header_builder.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/header_builder.py)<br>[protocol_engine.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/protocol_engine.py) | [test_protocol_engine.py](../tests/test_protocol_engine.py) | [packet_analysis_and_latency_investigation_20261015.md](packet_analysis_and_latency_investigation_20261015.md) |
-| **串流解析與結束識別** | [parser.py](../gemini_flow/infrastructure/clients/gemini_api/parser.py) | [test_integration.py](../tests/test_integration.py) | [botguard_investigation_and_latency_analysis.md](botguard_investigation_and_latency_analysis.md) |
-| **傳輸層與 TLS 模擬** | [http_client.py](../gemini_flow/infrastructure/clients/http_client.py) | [fake_http_client.py](../tests/fakes/fake_http_client.py) | [packet_analysis_and_latency_investigation_20261015.md](packet_analysis_and_latency_investigation_20261015.md) |
-| **多模態圖片上傳與標頭處理** | [gemini_uploader.py](../gemini_flow/infrastructure/clients/gemini_uploader.py)<br>[http_client.py](../gemini_flow/infrastructure/clients/http_client.py) | [test_uploader.py](../tests/test_uploader.py)<br>[test_case_insensitive_dict.py](../tests/test_case_insensitive_dict.py) | [multimodal_image_upload_and_http2_case_sensitivity_analysis.md](multimodal_image_upload_and_http2_case_sensitivity_analysis.md) |
-| **應用層服務協調** | [chat_service.py](../gemini_flow/application/chat_service.py) | [test_integration.py](../tests/test_integration.py) | - |
+| **WebChannel 通訊與協定引擎** | [webchannel_client.py](../gemini_flow/infrastructure/clients/gemini_api/webchannel_client.py)<br>[payload_builder.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/payload_builder.py)<br>[header_builder.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/header_builder.py)<br>[protocol_engine.py](../gemini_flow/infrastructure/clients/gemini_api/protocol/protocol_engine.py) | [test_webchannel_protocol.py](../tests/test_webchannel_protocol.py)<br>[test_protocol_engine.py](../tests/test_protocol_engine.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
+| **二進位 Protobuf 解析** | [reader.py](../gemini_flow/infrastructure/protocol/protobuf/reader.py)<br>[builder.py](../gemini_flow/infrastructure/protocol/protobuf/builder.py)<br>[wire.py](../gemini_flow/infrastructure/protocol/protobuf/wire.py) | [test_protobuf_wire.py](../tests/test_protobuf_wire.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
+| **串流解析與錯誤即時偵測** | [webchannel_parser.py](../gemini_flow/infrastructure/clients/gemini_api/webchannel_parser.py) | [test_webchannel_protocol.py](../tests/test_webchannel_protocol.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
+| **傳輸層與 Byte-Level 分幀** | [http_client.py](../gemini_flow/infrastructure/clients/http_client.py) | [test_webchannel_protocol.py](../tests/test_webchannel_protocol.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
+| **多模態圖片 Scotty 上傳** | [gemini_uploader.py](../gemini_flow/infrastructure/clients/gemini_uploader.py) | [test_uploader.py](../tests/test_uploader.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |
+| **應用層服務協調** | [chat_service.py](../gemini_flow/application/chat_service.py) | [test_chat_service.py](../tests/test_chat_service.py) | [webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md](webchannel_protobuf_duplex_and_multimodal_architecture_analysis_20261020.md) |

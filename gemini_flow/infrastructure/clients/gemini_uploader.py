@@ -1,13 +1,23 @@
+import uuid
 import logging
-from typing import List, Tuple
+from typing import List
 
 from gemini_flow.config import UPLOAD_IMAGE_HEADERS, UPLOAD_IMAGE_URL
-from gemini_flow.domain.entities import ImagePayload
+from gemini_flow.domain.entities import ImagePayload, UploadedImageAttachment
 from gemini_flow.domain.exceptions import NetworkError
 from gemini_flow.domain.interfaces import IHttpClient, IImageUploader
 
 logger = logging.getLogger("gemini_flow.image_uploader")
 
+def _detect_mime_type(filename: str) -> str:
+    lower = filename.lower()
+    if lower.endswith(".png"):
+        return "image/png"
+    if lower.endswith(".webp"):
+        return "image/webp"
+    if lower.endswith(".gif"):
+        return "image/gif"
+    return "image/jpeg"
 
 class GeminiImageUploader(IImageUploader):
     """
@@ -21,8 +31,8 @@ class GeminiImageUploader(IImageUploader):
         self.http_client = http_client
         self.upload_url = upload_url
 
-    async def upload_images(self, images: List[ImagePayload]) -> List[Tuple[str, str]]:
-        uploads: List[Tuple[str, str]] = []
+    async def upload_images(self, images: List[ImagePayload]) -> List[UploadedImageAttachment]:
+        uploads: List[UploadedImageAttachment] = []
 
         for idx, img in enumerate(images, start=1):
             filename = img.filename or f"image_{idx}.jpg"
@@ -78,7 +88,13 @@ class GeminiImageUploader(IImageUploader):
                     raise NetworkError("Received empty upload reference from server during finalize stage")
 
                 logger.info(f"Image '{filename}' uploaded successfully (ref: {upload_ref})")
-                uploads.append((upload_ref, filename))
+                attachment = UploadedImageAttachment(
+                    ref_url=upload_ref,
+                    filename=filename,
+                    mime_type=_detect_mime_type(filename),
+                    attachment_uuid=str(uuid.uuid4()),
+                )
+                uploads.append(attachment)
 
             except NetworkError:
                 raise

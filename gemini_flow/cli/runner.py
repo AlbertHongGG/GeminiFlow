@@ -10,7 +10,7 @@ from gemini_flow.domain.entities import ChatRequest, ImagePayload
 from gemini_flow.domain.exceptions import GeminiFlowError, PromptInputError
 from gemini_flow.infrastructure.auth.gemini_auth import GeminiAuthService
 from gemini_flow.infrastructure.browser.playwright_browser import PlaywrightWebBrowser
-from gemini_flow.infrastructure.clients.gemini_api.api_client import GeminiAPIClient
+from gemini_flow.infrastructure.clients.gemini_api.webchannel_client import GeminiWebChannelClient
 from gemini_flow.infrastructure.clients.gemini_downloader import GeminiImageDownloader
 from gemini_flow.infrastructure.clients.http_client import HttpClient
 from gemini_flow.infrastructure.logging.ai_logger import AILogger
@@ -104,7 +104,7 @@ async def _run_chat(args: argparse.Namespace, chat_service: Optional[ChatService
                 auth_service = GeminiAuthService(
                     config.cookies_dir, cookie_store, http_client, browser_provider
                 )
-                chat_provider = GeminiAPIClient(http_client)
+                chat_provider = GeminiWebChannelClient(http_client)
                 session_store = FileSessionStore(config.sessions_dir)
                 image_downloader = GeminiImageDownloader(config.image_output_dir, browser_provider)
 

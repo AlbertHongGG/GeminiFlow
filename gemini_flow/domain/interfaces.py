@@ -1,7 +1,15 @@
 import abc
 from typing import AsyncGenerator, List, Optional, Any, Dict, Mapping
 from pathlib import Path
-from .entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens, BotguardToken, ImagePayload
+from .entities import (
+    ChatRequest,
+    ChatResponseChunk,
+    SessionData,
+    GeminiCredentials,
+    UploadedImageAttachment,
+    BotguardToken,
+    ImagePayload,
+)
 
 class IHttpResponse(abc.ABC):
     @property
@@ -84,7 +92,7 @@ class IHttpClient(abc.ABC):
 
 class IAuthService(abc.ABC):
     @abc.abstractmethod
-    async def ensure_valid_tokens(self) -> Any:
+    async def ensure_valid_credentials(self) -> GeminiCredentials:
         pass
     
     @abc.abstractmethod
@@ -103,7 +111,7 @@ class IChatProvider(abc.ABC):
     async def stream_generate(
         self, 
         request: ChatRequest, 
-        tokens: Any,
+        credentials: GeminiCredentials,
         session_data: Optional[SessionData] = None
     ) -> AsyncGenerator[ChatResponseChunk, None]:
         pass
@@ -121,10 +129,10 @@ class ISessionStore(abc.ABC):
 
 class IImageUploader(abc.ABC):
     @abc.abstractmethod
-    async def upload_images(self, images: List[ImagePayload]) -> List[tuple[str, str]]:
+    async def upload_images(self, images: List[ImagePayload]) -> List[UploadedImageAttachment]:
         """
         Uploads images to the Gemini storage service.
-        Returns a list of (upload_ref, filename) tuples.
+        Returns a list of UploadedImageAttachment value objects.
         """
         pass
 

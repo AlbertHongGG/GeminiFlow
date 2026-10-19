@@ -1,6 +1,6 @@
 import logging
 from typing import AsyncGenerator, Optional
-from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData
+from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData, GeminiCredentials
 from gemini_flow.domain.interfaces import IAuthService, IChatProvider, ISessionStore, IImageDownloader, IHttpClient
 from gemini_flow.domain.exceptions import TokenExpiredError
 
@@ -29,39 +29,38 @@ class ChatService:
                 session_data = SessionData(session_id=request.session_id)
 
         try:
-            tokens = await self.auth_service.ensure_valid_tokens()
+            credentials = await self.auth_service.ensure_valid_credentials()
         except Exception:
             if not request.auto_refresh_cookies:
                 raise
-            tokens = await self.auth_service.ensure_valid_tokens()
+            credentials = await self.auth_service.ensure_valid_credentials()
             
-        cookies = await self.auth_service.get_cookies_dict()
+        cookies = credentials.cookies or await self.auth_service.get_cookies_dict()
         self.http_client.update_cookies(cookies)
 
         try:
-            async for chunk in self._execute_stream(request, tokens, session_data, cookies):
+            async for chunk in self._execute_stream(request, credentials, session_data):
                 yield chunk
         except TokenExpiredError:
             if not request.auto_refresh_cookies:
                 raise
             logger.info("Token expired during request. Forcing refresh and retrying...")
-            tokens = await self.auth_service.ensure_valid_tokens()
-            cookies = await self.auth_service.get_cookies_dict()
+            credentials = await self.auth_service.ensure_valid_credentials()
+            cookies = credentials.cookies or await self.auth_service.get_cookies_dict()
             self.http_client.update_cookies(cookies)
             
-            async for chunk in self._execute_stream(request, tokens, session_data, cookies):
+            async for chunk in self._execute_stream(request, credentials, session_data):
                 yield chunk
 
     async def _execute_stream(
         self, 
         request: ChatRequest, 
-        tokens, 
-        session_data: Optional[SessionData], 
-        cookies: dict
+        credentials: GeminiCredentials, 
+        session_data: Optional[SessionData],
     ) -> AsyncGenerator[ChatResponseChunk, None]:
         latest_conv_id = None
         latest_cont_token = None
-        async for chunk in self.chat_provider.stream_generate(request, tokens, session_data):
+        async for chunk in self.chat_provider.stream_generate(request, credentials, session_data):
             if chunk.conversation_id:
                 latest_conv_id = chunk.conversation_id
             if chunk.continuation_token:

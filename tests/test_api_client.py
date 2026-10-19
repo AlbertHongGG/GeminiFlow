@@ -1,16 +1,16 @@
 import json
 import unittest
-from gemini_flow.domain.entities import ChatRequest, GeminiTokens, SessionData
-from gemini_flow.infrastructure.clients.gemini_api.api_client import GeminiAPIClient
+from gemini_flow.domain.entities import ChatRequest, GeminiCredentials, SessionData
+from gemini_flow.infrastructure.clients.gemini_api.webchannel_client import GeminiWebChannelClient
 from tests.fakes import FakeHttpClient, FakeTokenSigner
 from tests.fixtures import SAMPLE_TEXT_LINE
 
-class TestGeminiAPIClient(unittest.IsolatedAsyncioTestCase):
+class TestGeminiWebChannelClient(unittest.IsolatedAsyncioTestCase):
     async def test_stream_generate_with_botguard_signing(self):
         fake_http = FakeHttpClient(stream_chunks=[SAMPLE_TEXT_LINE + "\n"])
         fake_signer = FakeTokenSigner(token_prefix="!TEST_BG_TOKEN_")
         
-        client = GeminiAPIClient(
+        client = GeminiWebChannelClient(
             http_client=fake_http,
             server_bl="boq_gemini-web-uiserver_20261012.19_p1",
             token_signer=fake_signer,
@@ -28,10 +28,10 @@ class TestGeminiAPIClient(unittest.IsolatedAsyncioTestCase):
             model="gemini-3.8-flash",
             thinking="low",
         )
-        tokens = GeminiTokens(snlm0e="TEST_SNLM0E", sid="987654321")
+        creds = GeminiCredentials(snlm0e="TEST_SNLM0E", sid="987654321")
 
         chunks = []
-        async for chunk in client.stream_generate(req, tokens, session_data=session):
+        async for chunk in client.stream_generate(req, creds, session_data=session):
             chunks.append(chunk)
 
         # 1. Verify token signer was invoked with effective prompt (including system prompt) and conversation_id
@@ -55,7 +55,7 @@ class TestGeminiAPIClient(unittest.IsolatedAsyncioTestCase):
         from gemini_flow.domain.entities import ImagePayload
 
         fake_uploader = FakeImageUploader(default_ref_prefix="/contrib_service/ttl_1d/uploaded_ref_")
-        client = GeminiAPIClient(
+        client = GeminiWebChannelClient(
             http_client=fake_http,
             token_signer=fake_signer,
             image_uploader=fake_uploader,
@@ -65,10 +65,10 @@ class TestGeminiAPIClient(unittest.IsolatedAsyncioTestCase):
             prompt="請描述圖片",
             images=[ImagePayload(data=b"imgbytes", filename="pic.jpg")],
         )
-        tokens = GeminiTokens(snlm0e="TEST_SNLM0E")
+        creds = GeminiCredentials(snlm0e="TEST_SNLM0E")
 
         chunks = []
-        async for chunk in client.stream_generate(req, tokens):
+        async for chunk in client.stream_generate(req, creds):
             chunks.append(chunk)
 
         # 1. Verify image uploader was invoked
@@ -79,10 +79,10 @@ class TestGeminiAPIClient(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(fake_http.post_calls), 1)
         self.assertEqual(len(fake_http.get_stream_calls), 1)
 
-    def test_api_client_proxy_propagation(self):
+    def test_client_proxy_propagation(self):
         fake_http = FakeHttpClient()
         fake_http.proxy = "http://proxy.test:8080"
-        client = GeminiAPIClient(http_client=fake_http)
+        client = GeminiWebChannelClient(http_client=fake_http)
         self.assertEqual(client.token_signer._waa_client._proxy, "http://proxy.test:8080")
         client.token_signer.close()
 

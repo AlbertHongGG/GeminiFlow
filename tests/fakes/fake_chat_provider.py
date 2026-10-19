@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Optional, List
 from gemini_flow.domain.interfaces import IChatProvider
-from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData, GeminiTokens
+from gemini_flow.domain.entities import ChatRequest, ChatResponseChunk, SessionData, GeminiCredentials
 from gemini_flow.domain.exceptions import TokenExpiredError
 
 class FakeChatProvider(IChatProvider):
@@ -20,7 +20,7 @@ class FakeChatProvider(IChatProvider):
     async def stream_generate(
         self,
         request: ChatRequest,
-        tokens: GeminiTokens,
+        credentials: GeminiCredentials,
         session_data: Optional[SessionData] = None,
     ) -> AsyncGenerator[ChatResponseChunk, None]:
         self.captured_requests.append(request)

@@ -2,8 +2,9 @@ from __future__ import annotations
 import json
 import re
 import base64
-from typing import Any, Iterator, Optional, Tuple, List, NamedTuple
+from typing import Any, Iterator, Optional, Tuple, List, NamedTuple, Union
 from gemini_flow.infrastructure.protocol.protobuf import ProtobufReader, ProtoField
+from gemini_flow.domain.exceptions import AuthenticationError, RateLimitError, GeminiFlowError
 
 class ParsedStreamDelta(NamedTuple):
     text: Optional[str] = None
@@ -24,6 +25,40 @@ class WebChannelStreamParser:
 
     def __init__(self) -> None:
         self.last_content: str = ""
+
+    def check_control_error(self, raw_chunk: str) -> None:
+        """
+        Inspects WebChannel control frames for RPC error status codes.
+        Raises AuthenticationError, RateLimitError, or GeminiFlowError immediately.
+        """
+        cleaned = self._strip_framing(raw_chunk)
+        if not cleaned or not cleaned.startswith("["):
+            return
+        try:
+            data = json.loads(cleaned, strict=False)
+
+            def find_errors(node: Any) -> None:
+                if isinstance(node, dict):
+                    if "error" in node and isinstance(node["error"], dict):
+                        err = node["error"]
+                        code = err.get("code")
+                        msg = err.get("message") or str(err)
+                        if code == 401 or "UNAUTHENTICATED" in str(msg) or code == "401":
+                            raise AuthenticationError(f"WebChannel RPC error 401: {msg}")
+                        if code == 429 or "RESOURCE_EXHAUSTED" in str(msg) or code == "429":
+                            raise RateLimitError(f"WebChannel RPC error 429: {msg}")
+                        raise GeminiFlowError(f"WebChannel RPC error {code}: {msg}")
+                    for v in node.values():
+                        find_errors(v)
+                elif isinstance(node, list):
+                    for item in node:
+                        find_errors(item)
+
+            find_errors(data)
+        except (AuthenticationError, RateLimitError, GeminiFlowError):
+            raise
+        except Exception:
+            pass
 
     def extract_text_delta(self, raw_chunk: str) -> ParsedStreamDelta:
         return self.parse_frame(raw_chunk)

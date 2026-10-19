@@ -67,9 +67,14 @@ class GeminiCredentials(BaseModel):
         return self.cookies.get("SAPISID") or self.cookies.get("__Secure-3PAPISID") or self.cookies.get("__Secure-1PAPISID")
 
 
-class GeminiTokens(GeminiCredentials):
-    """Alias for GeminiCredentials to maintain backward compatibility during migration."""
-    pass
+import uuid
+
+
+class UploadedImageAttachment(BaseModel):
+    ref_url: str
+    filename: str
+    mime_type: str = "image/jpeg"
+    attachment_uuid: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
 class BotguardToken(BaseModel):

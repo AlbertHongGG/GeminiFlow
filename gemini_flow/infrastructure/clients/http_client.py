@@ -181,25 +181,32 @@ class HttpClient(IHttpClient):
                 timeout=self.timeout,
             )
             self._check_status(resp.status_code, url)
-            buffer = ""
+            buffer = bytearray()
             async for chunk in resp.aiter_content():
-                buffer += chunk.decode("utf-8", errors="replace")
+                if not chunk:
+                    continue
+                buffer.extend(chunk)
                 while buffer:
-                    match = re.search(r"^(\d+)\s*\n", buffer)
+                    match = re.search(rb"^(\d+)\s*\n", buffer)
                     if match:
                         header_len = match.end()
-                        frame_len = int(match.group(1))
+                        frame_len = int(match.group(1).decode("ascii"))
                         total_needed = header_len + frame_len
                         if len(buffer) < total_needed:
                             break
-                        frame_data = buffer[header_len:total_needed]
-                        buffer = buffer[total_needed:].lstrip("\r\n")
-                        yield frame_data
+                        frame_bytes = bytes(buffer[header_len:total_needed])
+                        buffer = buffer[total_needed:]
+                        while buffer and buffer[:1] in (b"\r", b"\n"):
+                            del buffer[0]
+                        yield frame_bytes.decode("utf-8", errors="replace")
                     else:
-                        if "\n" in buffer:
-                            frame_data, buffer = buffer.split("\n", 1)
-                            if frame_data.strip():
-                                yield frame_data
+                        newline_pos = buffer.find(b"\n")
+                        if newline_pos != -1:
+                            frame_bytes = bytes(buffer[:newline_pos])
+                            buffer = buffer[newline_pos + 1:]
+                            decoded = frame_bytes.decode("utf-8", errors="replace").strip()
+                            if decoded:
+                                yield decoded
                         else:
                             break
         except (RequestException, Timeout, CurlError) as e:

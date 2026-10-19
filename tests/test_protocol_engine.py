@@ -135,5 +135,59 @@ class TestProtocolEngine(unittest.TestCase):
         self.assertEqual(ProtobufReader.find_field(inner, 4), "!TEST_BOTGUARD_TOKEN_STRING")
         self.assertEqual(ProtobufReader.find_field(inner, 5), "a1b2c3d4e5f60718293a4b5c6d7e8f90")
 
+    def test_payload_builder_with_image_attachments(self):
+        from gemini_flow.domain.entities import UploadedImageAttachment
+        spec = ModelSpec.resolve("gemini-3.8-flash", thinking="low")
+        images = [
+            UploadedImageAttachment(
+                ref_url="/contrib_service/ttl_1d/uploaded_photo_1",
+                filename="photo1.jpg",
+                mime_type="image/jpeg",
+                attachment_uuid="uuid-photo-1111",
+            ),
+            UploadedImageAttachment(
+                ref_url="/contrib_service/ttl_1d/uploaded_photo_2",
+                filename="diagram.png",
+                mime_type="image/png",
+                attachment_uuid="uuid-photo-2222",
+            ),
+        ]
+        builder = WebChannelPayloadBuilder(
+            prompt="分析這兩張圖片",
+            language="zh-TW",
+            model_spec=spec,
+            req_uuid="REQ-IMG-TEST",
+            uploaded_images=images,
+        )
+        init_b64 = builder.build_metadata_payload()
+        init_fields = ProtobufReader.parse(base64.b64decode(init_b64))
+        inner = ProtobufReader.find_path(init_fields, [1, 8, 5, 1])
+        
+        # Tag 1 of inner is the prompt container
+        prompt_container = ProtobufReader.find_field(inner, 1)
+        self.assertIsNotNone(prompt_container)
+        
+        # Tag 4 of prompt container contains repeated image attachment messages
+        image_fields = [f for f in prompt_container if f.tag == 4]
+        self.assertEqual(len(image_fields), 2)
+
+        # Image 1
+        img1_sub = image_fields[0].value
+        spec1 = ProtobufReader.find_field(img1_sub, 1)
+        self.assertEqual(ProtobufReader.find_field(spec1, 1), "/contrib_service/ttl_1d/uploaded_photo_1")
+        self.assertEqual(ProtobufReader.find_field(spec1, 2), 1)
+        self.assertEqual(ProtobufReader.find_field(spec1, 4), "image/jpeg")
+        self.assertEqual(ProtobufReader.find_field(spec1, 5), "uuid-photo-1111")
+        self.assertEqual(ProtobufReader.find_field(img1_sub, 2), "photo1.jpg")
+
+        # Image 2
+        img2_sub = image_fields[1].value
+        spec2 = ProtobufReader.find_field(img2_sub, 1)
+        self.assertEqual(ProtobufReader.find_field(spec2, 1), "/contrib_service/ttl_1d/uploaded_photo_2")
+        self.assertEqual(ProtobufReader.find_field(spec2, 2), 1)
+        self.assertEqual(ProtobufReader.find_field(spec2, 4), "image/png")
+        self.assertEqual(ProtobufReader.find_field(spec2, 5), "uuid-photo-2222")
+        self.assertEqual(ProtobufReader.find_field(img2_sub, 2), "diagram.png")
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict
 from gemini_flow.domain.interfaces import IAuthService, IWebBrowser
-from gemini_flow.domain.entities import GeminiTokens, GeminiCredentials
+from gemini_flow.domain.entities import GeminiCredentials
 from gemini_flow.domain.exceptions import RequireManualLoginError
 from gemini_flow.config import GEMINI_BASE_URL
 from gemini_flow.infrastructure.storage.file_cookie_store import FileCookieStore
@@ -22,16 +22,16 @@ class GeminiAuthService(IAuthService):
     async def get_cookies_dict(self) -> Dict[str, str]:
         return self.cookie_store.get_google_cookies()
 
-    async def _fetch_tokens_via_http(self, cookies: Dict[str, str]) -> Optional[GeminiTokens]:
+    async def _fetch_credentials_via_http(self, cookies: Dict[str, str]) -> Optional[GeminiCredentials]:
         try:
             self.http_client.update_cookies(cookies)
             html = await self.http_client.get_text(GEMINI_BASE_URL)
-            return self._extract_tokens(html)
+            return self._extract_credentials(html)
         except Exception as e:
-            logger.debug(f"Failed to fetch tokens via HTTP: {e}")
+            logger.debug(f"Failed to fetch credentials via HTTP: {e}")
             return None
 
-    def _extract_tokens(self, html: str) -> Optional[GeminiTokens]:
+    def _extract_credentials(self, html: str) -> Optional[GeminiCredentials]:
         snlm0e_match = re.search(r'SNlM0e\\":\\"(.*?)\\"', html)
         if not snlm0e_match:
             snlm0e_match = re.search(r'SNlM0e":"(.*?)"', html)
@@ -52,17 +52,17 @@ class GeminiAuthService(IAuthService):
             return None
         return GeminiCredentials(cookies={}, snlm0e=snlm0e, sid=sid, server_bl=server_bl)
 
-    async def ensure_valid_tokens(self) -> GeminiCredentials:
+    async def ensure_valid_credentials(self) -> GeminiCredentials:
         try:
             cookies = self.cookie_store.get_google_cookies()
-            creds = await self._fetch_tokens_via_http(cookies)
+            creds = await self._fetch_credentials_via_http(cookies)
             if creds:
                 creds.cookies = cookies
                 return creds
         except Exception:
             pass
         
-        logger.info("Tokens invalid or missing. Using Web Browser to refresh cookies...")
+        logger.info("Credentials invalid or missing. Using Web Browser to refresh cookies...")
         cookies_path = self.cookies_dir / "auth_Gemini.json"
         
         try:
@@ -70,14 +70,14 @@ class GeminiAuthService(IAuthService):
                 url=GEMINI_BASE_URL, 
                 wait_selector='script:has-text("SNlM0e")'
             )
-            tokens = self._extract_tokens(html)
+            creds = self._extract_credentials(html)
             
-            if tokens:
+            if creds:
                 cookie_export = await self.web_browser.get_cookies()
                 cookies_path.write_text(json.dumps(cookie_export, ensure_ascii=False, indent=2), encoding="utf-8")
-                tokens.cookies = self.cookie_store.get_google_cookies()
+                creds.cookies = self.cookie_store.get_google_cookies()
                 logger.info("Cookies refreshed and SNlM0e token verified successfully.")
-                return tokens
+                return creds
             else:
                 raise RequireManualLoginError(
                     f"Login required (maybe captcha or terms). Please sign in to {GEMINI_BASE_URL} manually."
@@ -85,4 +85,4 @@ class GeminiAuthService(IAuthService):
         except Exception as e:
             if isinstance(e, RequireManualLoginError):
                 raise
-            raise RuntimeError(f"Failed to refresh tokens via Web Browser: {e}") from e
+            raise RuntimeError(f"Failed to refresh credentials via Web Browser: {e}") from e

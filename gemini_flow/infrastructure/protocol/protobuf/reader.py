@@ -77,9 +77,10 @@ class ProtobufReader:
                 offset += length
 
                 # Attempt strict submessage parse on chunk:
-                # Must be recursive, non-empty, and consume 100% of chunk bytes without error.
+                # Must be recursive, non-empty, consume 100% of chunk bytes, and not be pure printable ASCII text.
                 is_submessage = False
-                if recursive and length > 0:
+                is_printable_ascii = (length > 0) and all(32 <= b <= 126 for b in chunk)
+                if recursive and length > 0 and not is_printable_ascii:
                     sub_fields, sub_success, sub_offset = cls._parse_stream(chunk, recursive=True)
                     if sub_success and sub_offset == length and len(sub_fields) > 0:
                         fields.append(ProtoField(tag, wire_type, sub_fields))

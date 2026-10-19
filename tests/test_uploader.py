@@ -37,9 +37,11 @@ class TestGeminiImageUploader(unittest.IsolatedAsyncioTestCase):
         uploads = await uploader.upload_images(images)
 
         self.assertEqual(len(uploads), 1)
-        ref, name = uploads[0]
-        self.assertEqual(ref, "/contrib_service/ttl_1d/uploaded_image_hash_789")
-        self.assertEqual(name, "test.jpg")
+        att = uploads[0]
+        self.assertEqual(att.ref_url, "/contrib_service/ttl_1d/uploaded_image_hash_789")
+        self.assertEqual(att.filename, "test.jpg")
+        self.assertEqual(att.mime_type, "image/jpeg")
+        self.assertTrue(bool(att.attachment_uuid))
 
         # Verify step 1 headers included content length
         self.assertEqual(len(http_client.post_form_calls), 2)
@@ -69,7 +71,8 @@ class TestGeminiImageUploader(unittest.IsolatedAsyncioTestCase):
         images = [ImagePayload(data=b"bytes", filename="pic.png")]
         uploads = await uploader.upload_images(images)
 
-        self.assertEqual(uploads[0][0], "/contrib_service/ttl_1d/title_case_ref")
+        self.assertEqual(uploads[0].ref_url, "/contrib_service/ttl_1d/title_case_ref")
+        self.assertEqual(uploads[0].mime_type, "image/png")
 
     async def test_upload_step1_non_200_raises_network_error(self):
         step1_resp = FakeHttpResponse(status_code=403, content=b"Forbidden")
